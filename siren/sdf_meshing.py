@@ -11,6 +11,12 @@ import plyfile
 import skimage.measure
 import torch
 
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+    device = torch.device('mps')
+else:
+    device = torch.device('cpu')
 
 def create_mesh_v2(
     decoder,
@@ -21,7 +27,8 @@ def create_mesh_v2(
     offset=None,
     scale=None,
     vis_transform=None,
-):
+):  
+    global device
     start = time.time()
     ply_filename = filename
     world_to_mc_grid = torch.eye(4)
@@ -72,7 +79,7 @@ def create_mesh_v2(
     )
 
     while head < num_samples:
-        sample_subset = samples[head : min(head + max_batch, num_samples), 0:3].cuda()
+        sample_subset = samples[head : min(head + max_batch, num_samples), 0:3].to(device)
 
         samples[head : min(head + max_batch, num_samples), 3] = (
             decoder(sample_subset).squeeze().detach().cpu()  # .squeeze(1)
@@ -147,7 +154,8 @@ def create_mesh(
     scale=None,
     level=0,
     time_val=-1,
-):
+):  
+    global device
     start = time.time()
     ply_filename = filename
     if filename is not None:
@@ -181,12 +189,12 @@ def create_mesh(
 
     while head < num_samples:
         # print(head)
-        sample_subset = samples[head : min(head + max_batch, num_samples), 0:3].cuda()
+        sample_subset = samples[head : min(head + max_batch, num_samples), 0:3].to(device)
         if time_val >= 0:
             sample_subset = torch.hstack(
                 (
                     sample_subset,
-                    torch.ones((sample_subset.shape[0], 1)).cuda() * time_val,
+                    torch.ones((sample_subset.shape[0], 1)).to(device) * time_val,
                 )
             )
         samples[head : min(head + max_batch, num_samples), 3] = (

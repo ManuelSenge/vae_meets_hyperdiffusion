@@ -9,6 +9,13 @@ import skimage.measure
 import torch
 from torchvision.utils import make_grid, save_image
 
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+    device = torch.device('mps')
+else:
+    device = torch.device('cpu')
+
 
 def cond_mkdir(path):
     if not os.path.exists(path):
@@ -24,7 +31,8 @@ def write_result_img(experiment_name, filename, img):
 
 
 def densely_sample_activations(model, num_dim=1, num_steps=int(1e6)):
-    input = torch.linspace(-1.0, 1.0, steps=num_steps).float()
+    global device
+    input = torch.linspace(-1.0, 1.0, steps=num_steps).type(torch.float32)
 
     if num_dim == 1:
         input = input[..., None]
@@ -33,7 +41,7 @@ def densely_sample_activations(model, num_dim=1, num_steps=int(1e6)):
             -1, num_dim
         )
 
-    input = {"coords": input[None, :].cuda()}
+    input = {"coords": input[None, :].to(device)}
     with torch.no_grad():
         activations = model.forward_with_activations(input)["activations"]
     return activations
@@ -41,7 +49,8 @@ def densely_sample_activations(model, num_dim=1, num_steps=int(1e6)):
 
 def write_wave_summary(
     model, model_input, gt, model_output, writer, total_steps, prefix="train_"
-):
+):  
+    global device
     sl = 256
 
     def scale_percentile(pred, min_perc=1, max_perc=99):
@@ -53,7 +62,7 @@ def write_wave_summary(
     with torch.no_grad():
         frames = [0.0, 0.05, 0.1, 0.15, 0.25]
         coords = [
-            dataio.get_mgrid((1, sl, sl), dim=3)[None, ...].cuda() for f in frames
+            dataio.get_mgrid((1, sl, sl), dim=3)[None, ...].to(device) for f in frames
         ]
         for idx, f in enumerate(frames):
             coords[idx][..., 0] = f
@@ -105,9 +114,10 @@ def write_wave_summary(
 
 def write_helmholtz_summary(
     model, model_input, gt, model_output, writer, total_steps, prefix="train_"
-):
+):  
+    global device
     sl = 256
-    coords = dataio.get_mgrid(sl)[None, ...].cuda()
+    coords = dataio.get_mgrid(sl)[None, ...].to(device)
 
     def scale_percentile(pred, min_perc=1, max_perc=99):
         min = np.percentile(pred.cpu().numpy(), 1)
@@ -349,14 +359,15 @@ def make_contour_plot(array_2d, mode="log"):
 
 def write_sdf_summary(
     model, model_input, gt, model_output, writer, total_steps, prefix="train_"
-):
+):  
+    global device
     slice_coords_2d = dataio.get_mgrid(512)
 
     with torch.no_grad():
         yz_slice_coords = torch.cat(
             (torch.zeros_like(slice_coords_2d[:, :1]), slice_coords_2d), dim=-1
         )
-        yz_slice_model_input = {"coords": yz_slice_coords.cuda()[None, ...]}
+        yz_slice_model_input = {"coords": yz_slice_coords.to(device)[None, ...]}
 
         yz_model_out = model(yz_slice_model_input)
         sdf_values = yz_model_out["model_out"]
@@ -372,7 +383,7 @@ def write_sdf_summary(
             ),
             dim=-1,
         )
-        xz_slice_model_input = {"coords": xz_slice_coords.cuda()[None, ...]}
+        xz_slice_model_input = {"coords": xz_slice_coords.to(device)[None, ...]}
 
         xz_model_out = model(xz_slice_model_input)
         sdf_values = xz_model_out["model_out"]
@@ -384,7 +395,7 @@ def write_sdf_summary(
             (slice_coords_2d[:, :2], -0.75 * torch.ones_like(slice_coords_2d[:, :1])),
             dim=-1,
         )
-        xy_slice_model_input = {"coords": xy_slice_coords.cuda()[None, ...]}
+        xy_slice_model_input = {"coords": xy_slice_coords.to(device)[None, ...]}
 
         xy_model_out = model(xy_slice_model_input)
         sdf_values = xy_model_out["model_out"]
@@ -407,7 +418,7 @@ def wandb_sdf_summary(
         yz_slice_coords = torch.cat(
             (torch.zeros_like(slice_coords_2d[:, :1]), slice_coords_2d), dim=-1
         )
-        yz_slice_model_input = {"coords": yz_slice_coords.cuda()[None, ...]}
+        yz_slice_model_input = {"coords": yz_slice_coords.to(device)[None, ...]}
 
         yz_model_out = model(yz_slice_model_input)
         sdf_values = yz_model_out["model_out"]
@@ -423,7 +434,7 @@ def wandb_sdf_summary(
             ),
             dim=-1,
         )
-        xz_slice_model_input = {"coords": xz_slice_coords.cuda()[None, ...]}
+        xz_slice_model_input = {"coords": xz_slice_coords.to(device)[None, ...]}
 
         xz_model_out = model(xz_slice_model_input)
         sdf_values = xz_model_out["model_out"]
@@ -436,7 +447,7 @@ def wandb_sdf_summary(
             (slice_coords_2d[:, :2], -0.75 * torch.ones_like(slice_coords_2d[:, :1])),
             dim=-1,
         )
-        xy_slice_model_input = {"coords": xy_slice_coords.cuda()[None, ...]}
+        xy_slice_model_input = {"coords": xy_slice_coords.to(device)[None, ...]}
 
         xy_model_out = model(xy_slice_model_input)
         sdf_values = xy_model_out["model_out"]
@@ -472,13 +483,14 @@ def write_video_summary(
     writer,
     total_steps,
     prefix="train_",
-):
+):  
+    global device
     resolution = vid_dataset.shape
     frames = [0, 60, 120, 200]
     Nslice = 10
     with torch.no_grad():
         coords = [
-            dataio.get_mgrid((1, resolution[1], resolution[2]), dim=3)[None, ...].cuda()
+            dataio.get_mgrid((1, resolution[1], resolution[2]), dim=3)[None, ...].to(device)
             for f in frames
         ]
         for idx, f in enumerate(frames):

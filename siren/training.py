@@ -91,8 +91,8 @@ def train(
             for step, (model_input, gt) in enumerate(train_dataloader):
                 start_time = time.time()
 
-                model_input = {key: value.cuda() for key, value in model_input.items()}
-                gt = {key: value.cuda() for key, value in gt.items()}
+                model_input = {key: value.to(cfg.device) for key, value in model_input.items()}
+                gt = {key: value.to(cfg.device) for key, value in gt.items()}
 
                 if double_precision:
                     model_input = {

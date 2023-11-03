@@ -2,6 +2,13 @@ import diff_operators
 import torch
 import torch.nn.functional as F
 
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+    device = torch.device('mps')
+else:
+    device = torch.device('cpu')
+
 
 def image_mse(mask, model_output, gt):
     if mask is None:
@@ -22,6 +29,7 @@ def image_l1(mask, model_output, gt):
 
 
 def image_mse_TV_prior(mask, k1, model, model_output, gt):
+    global device
     coords_rand = 2 * (
         torch.rand(
             (
@@ -29,7 +37,7 @@ def image_mse_TV_prior(mask, k1, model, model_output, gt):
                 model_output["model_in"].shape[1] // 2,
                 model_output["model_in"].shape[2],
             )
-        ).cuda()
+        ).to(device)
         - 0.5
     )
     rand_input = {"coords": coords_rand}
@@ -62,6 +70,7 @@ def image_mse_TV_prior(mask, k1, model, model_output, gt):
 
 
 def image_mse_FH_prior(mask, k1, model, model_output, gt):
+    global device
     coords_rand = 2 * (
         torch.rand(
             (
@@ -69,7 +78,7 @@ def image_mse_FH_prior(mask, k1, model, model_output, gt):
                 model_output["model_in"].shape[1] // 2,
                 model_output["model_in"].shape[2],
             )
-        ).cuda()
+        ).to(device)
         - 0.5
     )
     rand_input = {"coords": coords_rand}
@@ -131,6 +140,7 @@ def gradients_mse(model_output, gt):
 
 
 def gradients_color_mse(model_output, gt):
+    global device
     # compute gradients on the model
     gradients_r = diff_operators.gradient(
         model_output["model_out"][..., 0], model_output["model_in"]
@@ -143,7 +153,7 @@ def gradients_color_mse(model_output, gt):
     )
     gradients = torch.cat((gradients_r, gradients_g, gradients_b), dim=-1)
     # compare them with the ground-truth
-    weights = torch.tensor([1e1, 1e1, 1.0, 1.0, 1e1, 1e1]).cuda()
+    weights = torch.tensor([1e1, 1e1, 1.0, 1.0, 1e1, 1e1]).to(device)
     gradients_loss = torch.mean(
         (weights * (gradients[0:2] - gt["gradients"]).pow(2)).sum(-1)
     )
@@ -190,12 +200,13 @@ def wave_pml(model_output, gt):
 
 
 def helmholtz_pml(model_output, gt):
+    global device
     source_boundary_values = gt["source_boundary_values"]
 
     if "rec_boundary_values" in gt:
         rec_boundary_values = gt["rec_boundary_values"]
 
-    wavenumber = gt["wavenumber"].float()
+    wavenumber = gt["wavenumber"].type(torch.float32)
     x = model_output["model_in"]  # (meta_batch_size, num_points, 2)
     y = model_output["model_out"]  # (meta_batch_size, num_points, 2)
     squared_slowness = gt["squared_slowness"].repeat(1, 1, y.shape[-1] // 2)
@@ -276,7 +287,7 @@ def helmholtz_pml(model_output, gt):
         data_term = torch.where(
             rec_boundary_values != 0,
             y - rec_boundary_values,
-            torch.Tensor([0.0]).cuda(),
+            torch.Tensor([0.0]).to(device),
         )
     else:
         data_term = torch.Tensor([0.0])

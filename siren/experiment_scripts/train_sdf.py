@@ -124,7 +124,7 @@ def main(cfg: DictConfig):
                 continue
 
             # Define the model.
-            model = get_model(cfg).cuda()
+            model = get_model(cfg).to(cfg.device)
 
             # Define the loss
             loss_fn = loss_functions.sdf
@@ -148,9 +148,9 @@ def main(cfg: DictConfig):
                 with torch.no_grad():
                     (model_input, gt) = next(iter(dataloader))
                     model_input = {
-                        key: value.cuda() for key, value in model_input.items()
+                        key: value.to(cfg.device) for key, value in model_input.items()
                     }
-                    gt = {key: value.cuda() for key, value in gt.items()}
+                    gt = {key: value.to(cfg.device) for key, value in gt.items()}
                     model_output = model(model_input)
                     loss = loss_fn(model_output, gt, model)
                 if loss["occupancy"] > 0.5:

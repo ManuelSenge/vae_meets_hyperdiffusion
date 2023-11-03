@@ -129,7 +129,7 @@ def gaussian(x, mu=[0, 0], sigma=1e-4, d=2):
     q = -0.5 * ((x - mu) ** 2).sum(1)
     return torch.from_numpy(
         1 / np.sqrt(sigma**d * (2 * np.pi) ** d) * np.exp(q / sigma)
-    ).float()
+    ).type(torch.float32)
 
 
 class InverseHelmholtz(Dataset):
@@ -156,15 +156,15 @@ class InverseHelmholtz(Dataset):
         )
         self.sigma = 1e-4
         self.source = torch.Tensor([1.0, 1.0]).view(-1, 2)
-        self.source_coords = torch.Tensor(source_coords).float()  # Nsrc, 2
+        self.source_coords = torch.Tensor(source_coords).type(torch.float32)  # Nsrc, 2
 
-        self.rec_coords = torch.Tensor(rec_coords).float()  # Nrec, 2
+        self.rec_coords = torch.Tensor(rec_coords).type(torch.float32)  # Nrec, 2
         self.rec = torch.zeros(
             self.rec_coords.shape[0], 2 * self.source_coords.shape[0]
         )  # Nrec, 2*Nsrc
         for i in range(self.rec.shape[0]):
-            self.rec[i, ::2] = torch.Tensor(rec_val.real)[i, :].float()  # * amplitude
-            self.rec[i, 1::2] = torch.Tensor(rec_val.imag)[i, :].float()  # * amplitude
+            self.rec[i, ::2] = torch.Tensor(rec_val.real)[i, :].type(torch.float32)  # * amplitude
+            self.rec[i, 1::2] = torch.Tensor(rec_val.imag)[i, :].type(torch.float32)  # * amplitude
 
     def __len__(self):
         return 1
@@ -176,8 +176,8 @@ class InverseHelmholtz(Dataset):
             mask = (torch.abs(coords[..., 0]) < 0.3) & (torch.abs(coords[..., 1]) < 0.3)
             squared_slowness[..., 0] = torch.where(
                 mask,
-                1.0 / perturbation**2 * torch.ones_like(mask.float()),
-                torch.ones_like(mask.float()),
+                1.0 / perturbation**2 * torch.ones_like(mask.type(torch.float32)),
+                torch.ones_like(mask.type(torch.float32)),
             )
         elif self.velocity == "circle":
             squared_slowness = torch.zeros_like(coords)
@@ -185,8 +185,8 @@ class InverseHelmholtz(Dataset):
             mask = torch.sqrt(coords[..., 0] ** 2 + coords[..., 1] ** 2) < 0.1
             squared_slowness[..., 0] = torch.where(
                 mask,
-                1.0 / perturbation**2 * torch.ones_like(mask.float()),
-                torch.ones_like(mask.float()),
+                1.0 / perturbation**2 * torch.ones_like(mask.type(torch.float32)),
+                torch.ones_like(mask.type(torch.float32)),
             )
         else:
             squared_slowness = torch.ones_like(coords)
@@ -306,8 +306,8 @@ class SingleHelmholtzSource(Dataset):
             mask = (torch.abs(coords[..., 0]) < 0.3) & (torch.abs(coords[..., 1]) < 0.3)
             squared_slowness[..., 0] = torch.where(
                 mask,
-                1.0 / perturbation**2 * torch.ones_like(mask.float()),
-                torch.ones_like(mask.float()),
+                1.0 / perturbation**2 * torch.ones_like(mask.type(torch.float32)),
+                torch.ones_like(mask.type(torch.float32)),
             )
         elif self.velocity == "circle":
             squared_slowness = torch.zeros_like(coords)
@@ -315,8 +315,8 @@ class SingleHelmholtzSource(Dataset):
             mask = torch.sqrt(coords[..., 0] ** 2 + coords[..., 1] ** 2) < 0.1
             squared_slowness[..., 0] = torch.where(
                 mask,
-                1.0 / perturbation**2 * torch.ones_like(mask.float()),
-                torch.ones_like(mask.float()),
+                1.0 / perturbation**2 * torch.ones_like(mask.type(torch.float32)),
+                torch.ones_like(mask.type(torch.float32)),
             )
 
         else:
@@ -394,8 +394,8 @@ class WaveSource(Dataset):
             mask = (torch.abs(coords[..., 0]) < 0.3) & (torch.abs(coords[..., 1]) < 0.3)
             squared_slowness[..., 0] = torch.where(
                 mask,
-                1.0 / perturbation**2 * torch.ones_like(mask.float()),
-                torch.ones_like(mask.float()),
+                1.0 / perturbation**2 * torch.ones_like(mask.type(torch.float32)),
+                torch.ones_like(mask.type(torch.float32)),
             )
         elif self.velocity == "circle":
             squared_slowness = torch.zeros_like(coords[:, 0])
@@ -403,8 +403,8 @@ class WaveSource(Dataset):
             mask = torch.sqrt(coords[..., 0] ** 2 + coords[..., 1] ** 2) < 0.1
             squared_slowness[..., 0] = torch.where(
                 mask,
-                1.0 / perturbation**2 * torch.ones_like(mask.float()),
-                torch.ones_like(mask.float()),
+                1.0 / perturbation**2 * torch.ones_like(mask.type(torch.float32)),
+                torch.ones_like(mask.type(torch.float32)),
             )
         else:
             squared_slowness = torch.ones_like(coords[:, 0])
@@ -672,14 +672,14 @@ class PointCloud(Dataset):
 
             coords = np.hstack((coords, time_expanded))
             # print(coords.shape)
-            return {"coords": torch.from_numpy(coords).float()}, {
+            return {"coords": torch.from_numpy(coords).type(torch.float32)}, {
                 "sdf": torch.from_numpy(occs)
             }
         coords = self.coords[idx]
         occs = self.occupancies[idx, None]
 
 
-        return {"coords": torch.from_numpy(coords).float()}, {
+        return {"coords": torch.from_numpy(coords).type(torch.float32)}, {
             "sdf": torch.from_numpy(occs)
         }
 

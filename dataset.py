@@ -120,7 +120,7 @@ class VoxelDataset(Dataset):
         # Convert 0 regions to -1, so that the input is -1 or +1.
         grid[grid == 0] = -1
 
-        grid = torch.tensor(grid).float()
+        grid = torch.tensor(grid).type(torch.float32)
 
         # Doing some sanity checks for 4D and 3D generations
         if self.cfg.mlp_config.params.move:
@@ -177,7 +177,7 @@ class WeightDataset(Dataset):
         if "first_weight_name" in cfg and cfg.first_weight_name is not None:
             self.first_weights = self.get_weights(
                 torch.load(os.path.join(self.mlps_folder, cfg.first_weight_name))
-            ).float()
+            ).type(torch.float32)
         else:
             self.first_weights = torch.tensor([0])
 
@@ -237,7 +237,7 @@ class WeightDataset(Dataset):
             )  # Prev: 0.3
             weights = torch.lerp(weights, other_weights, lerp_alpha)
 
-        return weights.float(), weights_prev.float(), weights_prev.float()
+        return weights.type(torch.float32), weights_prev.type(torch.float32), weights_prev.type(torch.float32)
 
     def __len__(self):
         return len(self.mlp_files)

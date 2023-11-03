@@ -29,8 +29,8 @@ class SDFDecoder(torch.nn.Module):
                 self.model = MLP3D(**cfg)
 
         if checkpoint_path is not None:
-            self.model.load_state_dict(torch.load(checkpoint_path))
-        self.model.cuda()
+            self.model.load_state_dict(torch.load(checkpoint_path, map_location=cfg.device))
+        self.model.to(cfg.device)
 
     def forward(self, coords):
         model_in = {"coords": coords}

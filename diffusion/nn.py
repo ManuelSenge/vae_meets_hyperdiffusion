@@ -3,7 +3,7 @@ Various utilities for neural networks.
 """
 
 import math
-
+import torch
 import torch as th
 import torch.nn as nn
 
@@ -16,7 +16,7 @@ class SiLU(nn.Module):
 
 class GroupNorm32(nn.GroupNorm):
     def forward(self, x):
-        return super().forward(x.float()).type(x.dtype)
+        return super().forward(x.type(torch.float32)).type(x.dtype)
 
 
 def conv_nd(dims, *args, **kwargs):
@@ -114,7 +114,7 @@ def timestep_embedding(timesteps, dim, max_period=10000):
     freqs = th.exp(
         -math.log(max_period) * th.arange(start=0, end=half, dtype=th.float32) / half
     ).to(device=timesteps.device)
-    args = timesteps[:, None].float() * freqs[None]
+    args = timesteps[:, None].type(torch.float32) * freqs[None]
     embedding = th.cat([th.cos(args), th.sin(args)], dim=-1)
     if dim % 2:
         embedding = th.cat([embedding, th.zeros_like(embedding[:, :1])], dim=-1)

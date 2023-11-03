@@ -14,7 +14,7 @@ import hydra
 import numpy as np
 import pytorch_lightning as pl
 import torch
-from omegaconf import DictConfig
+from omegaconf import DictConfig, open_dict
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader, random_split
@@ -35,6 +35,34 @@ def main(cfg: DictConfig):
     Config.config = config = cfg
     method = Config.get("method")
     mlp_kwargs = None
+    
+    if torch.cuda.is_available():
+        # adding the device to the config
+        with open_dict(Config.config):
+            Config.config["mlp_config"]["params"]['device'] = 'cuda'
+            Config.config["transformer_config"]["params"]['device'] = 'cuda'
+            cfg['device'] = 'cuda'
+
+        device = torch.device('cuda')
+        devices = torch.cuda.device_count()
+        strategy = "ddp"
+    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        with open_dict(Config.config):
+            Config.config["mlp_config"]["params"]['device'] = 'mps'
+            Config.config["transformer_config"]["params"]['device'] = 'mps'
+            cfg['device'] = 'mps'
+
+        device = torch.device('mps')
+        devices = 1 # on MPS it supports single-device operation only.
+        strategy = None # MPS accelerator is incompatible with DDP family of strategies. It supports single-device operation only.
+    else:
+        with open_dict(Config.config):
+            Config.config["mlp_config"]["params"]['device'] = 'cpu'
+            Config.config["transformer_config"]["params"]['device'] = 'cpu'
+            cfg['device'] = 'cdu'
+
+        device = torch.device('cpu')
+        strategy = "ddp"
 
     # In HyperDiffusion, we need to know the specifications of MLPs that are used for overfitting
     if "hyper" in method:
@@ -70,12 +98,12 @@ def main(cfg: DictConfig):
             layer_names.append(l)
         model = Transformer(
             layers, layer_names, **Config.config["transformer_config"]["params"]
-        ).cuda()
+        ).to(device)
     # Initialize UNet for Voxel baseline
     else:
         model = ldm.ldm.modules.diffusionmodules.openaimodel.UNetModel(
             **Config.config["unet_config"]["params"]
-        ).float()
+        ).type(torch.float32)
 
     dataset_path = os.path.join(Config.config["dataset_dir"], Config.config["dataset"])
     train_object_names = np.genfromtxt(
@@ -249,11 +277,12 @@ def main(cfg: DictConfig):
     )
 
     lr_monitor = pl.callbacks.LearningRateMonitor(logging_interval="epoch")
+    
     trainer = pl.Trainer(
         accelerator="gpu",
-        devices=torch.cuda.device_count(),
+        devices=devices,
         max_epochs=Config.get("epochs"),
-        strategy="ddp",
+        strategy=strategy,
         logger=wandb_logger,
         default_root_dir=checkpoint_path,
         callbacks=[

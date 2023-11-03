@@ -105,6 +105,7 @@ class GPT(nn.Module):
         embd_pdrop=0.0,
         chunk_size=None,
         split_policy="chunk",
+        device='cpu'
     ):
         # parameter_sizes is a list of integers indicating how many parameters are in each layer
         super().__init__()
@@ -367,8 +368,9 @@ class GPT(nn.Module):
 
 
 class FrequencyEmbedder(nn.Module):
-    def __init__(self, num_frequencies, max_freq_log2):
+    def __init__(self, num_frequencies, max_freq_log2, device):
         super().__init__()
+        self.device = device
         frequencies = 2 ** torch.linspace(0, max_freq_log2, steps=num_frequencies)
         self.register_buffer("frequencies", frequencies)
 
@@ -377,7 +379,7 @@ class FrequencyEmbedder(nn.Module):
         N = x.size(0)
         if x.dim() == 1:  # (N,)
             x = x.unsqueeze(1)  # (N, D) where D=1
-        x_unsqueezed = x.unsqueeze(-1).to("cuda", torch.float)  # (N, D, 1)
+        x_unsqueezed = x.unsqueeze(-1).to(self.device, torch.float)  # (N, D, 1)
         scaled = (
             self.frequencies.view(1, 1, -1) * x_unsqueezed
         )  # (N, D, num_frequencies)
@@ -428,7 +430,8 @@ class Transformer(nn.Module):
             input_parameter_names,
             **gpt_kwargs,
         )
-        self.scalar_embedder = FrequencyEmbedder(num_frequencies, max_freq_log2)
+
+        self.scalar_embedder = FrequencyEmbedder(num_frequencies, max_freq_log2, gpt_kwargs['device'])
 
         # Initialize with identity output:
         if self.use_global_residual:
@@ -543,7 +546,7 @@ if __name__ == "__main__":
         input.append(state_dict[l].flatten())
     input = torch.hstack(input).unsqueeze(0).cuda()
 
-    net = Transformer(layers, layer_names, split_policy="layer_by_layer").cuda()
+    net = Transformer(layers, layer_names, split_policy="layer_by_layer", device='cuda').cuda()
     t = torch.randint(0, 1000, (len(input), 1)).cuda()
     print(input.shape, t.shape)
     out = net(input, t)

@@ -33,6 +33,7 @@ class HyperDiffusion(pl.LightningModule):
         self.train_dt = train_dt
         self.test_dt = test_dt
         self.ae_model = None
+
         self.sample_count = min(
             8, Config.get("batch_size")
         )  # it shouldn't be more than 36 limited by batch_size
@@ -57,12 +58,12 @@ class HyperDiffusion(pl.LightningModule):
         t = (
             torch.randint(0, high=self.diff.num_timesteps, size=(images.shape[0],))
             .long()
-            .to(self.device)
+            .to(self.cfg.device)
         )
         images = images * self.cfg.normalization_factor
         x_t, e = self.diff.q_sample(images, t)
-        x_t = x_t.float()
-        e = e.float()
+        x_t = x_t.type(torch.float32)
+        e = e.type(torch.float32)
         return self.model(x_t, t), e
 
     def configure_optimizers(self):
@@ -103,9 +104,9 @@ class HyperDiffusion(pl.LightningModule):
                 self.mlp_kwargs.model_type,
                 None,
                 "nerf" if self.mlp_kwargs.model_type == "nerf" else "mlp",
-                self.mlp_kwargs,
+                self.mlp_kwargs
             )
-            sdf_decoder.model = mlp.cuda()
+            sdf_decoder.model = mlp.to(self.cfg.device)
             if not self.mlp_kwargs.move:
                 sdf_meshing.create_mesh(
                     sdf_decoder,
@@ -156,7 +157,7 @@ class HyperDiffusion(pl.LightningModule):
         t = (
             torch.randint(0, high=self.diff.num_timesteps, size=(input_data.shape[0],))
             .long()
-            .to(self.device)
+            .to(self.cfg.device)
         )
 
         # Execute a diffusion forward pass
@@ -197,7 +198,7 @@ class HyperDiffusion(pl.LightningModule):
                 x_0s = (
                     self.diff.ddim_sample_loop(self.model, (4, *self.image_size[1:]))
                     .cpu()
-                    .float()
+                    .type(torch.float32)
                 )
                 x_0s = x_0s / self.cfg.normalization_factor
                 print(
@@ -252,7 +253,7 @@ class HyperDiffusion(pl.LightningModule):
                         self.model, (self.cfg.batch_size, *self.image_size[1:])
                     )
                     .cpu()
-                    .float()
+                    .type(torch.float32)
                 )
                 print(
                     "x_0s[0].stats",
@@ -303,9 +304,9 @@ class HyperDiffusion(pl.LightningModule):
                 self.mlp_kwargs.model_type,
                 None,
                 "nerf" if self.mlp_kwargs.model_type == "nerf" else "mlp",
-                self.mlp_kwargs,
+                self.mlp_kwargs
             )
-            sdf_decoder.model = mlp.cuda().eval()
+            sdf_decoder.model = mlp.to(self.cfg.device).eval()
             with torch.no_grad():
                 effective_file_name = (
                     f"{folder_name}/mesh_epoch_{self.current_epoch}_{i}_{info}"
@@ -478,8 +479,8 @@ class HyperDiffusion(pl.LightningModule):
         sample_pcs = np.array(sample_pcs)
         print(sample_pcs.shape, ref_pcs.shape)
         metrics = compute_all_metrics_4d(
-            torch.tensor(sample_pcs).float().to(self.device),
-            torch.tensor(ref_pcs).float().to(self.device),
+            torch.tensor(sample_pcs).type(torch.float32).to(self.cfg.device),
+            torch.tensor(ref_pcs).type(torch.float32).to(self.cfg.device),
             160,
             self.logger,
         )
@@ -511,9 +512,9 @@ class HyperDiffusion(pl.LightningModule):
             pc = np.load(os.path.join(dataset_path, obj_name + ".npy"))
             pc = pc[:, :3]
 
-            pc = torch.tensor(pc).float()
+            pc = torch.tensor(pc).type(torch.float32)
             if split_type == "test":
-                pc = pc.float()
+                pc = pc.type(torch.float32)
                 shift = pc.mean(dim=0).reshape(1, 3)
                 scale = pc.flatten().std().reshape(1, 1)
                 pc = (pc - shift) / scale
@@ -599,9 +600,9 @@ class HyperDiffusion(pl.LightningModule):
                 pc = torch.tensor(mesh.sample(n_points))
                 if not self.cfg.mlp_config.params.move and "hyper" in self.cfg.method:
                     pc = pc * 2
-                pc = pc.float()
+                pc = pc.type(torch.float32)
                 if split_type == "test":
-                    pc = pc.float()
+                    pc = pc.type(torch.float32)
                     shift = pc.mean(dim=0).reshape(1, 3)
                     scale = pc.flatten().std().reshape(1, 1)
                     pc = (pc - shift) / scale
@@ -627,11 +628,11 @@ class HyperDiffusion(pl.LightningModule):
         print("Starting metric computation for", split_type)
 
         fid = calculate_fid_3d(
-            sample_pcs.to(self.device), ref_pcs.to(self.device), self.logger
+            sample_pcs.to(self.cfg.device), ref_pcs.to(self.cfg.device), self.logger
         )
         metrics = compute_all_metrics(
-            sample_pcs.to(self.device),
-            ref_pcs.to(self.device),
+            sample_pcs.to(self.cfg.device),
+            ref_pcs.to(self.cfg.device),
             16 if split_type == "test" else 16,
             self.logger,
         )
@@ -658,7 +659,7 @@ class HyperDiffusion(pl.LightningModule):
             x_0s = (
                 self.diff.ddim_sample_loop(self.model, (32, *self.image_size[1:]))
                 .cpu()
-                .float()
+                .type(torch.float32)
             )
             print(
                 "x_0s[0].stats",
@@ -709,7 +710,7 @@ class HyperDiffusion(pl.LightningModule):
             x_0s = []
             for i, img in enumerate(self.train_dt):
                 x_0s.append(img[0])
-            x_0s = torch.stack(x_0s).to(self.device)
+            x_0s = torch.stack(x_0s).to(self.cfg.device)
             flat = x_0s.view(len(x_0s), -1)
             # return
             print(x_0s.shape, flat.shape)

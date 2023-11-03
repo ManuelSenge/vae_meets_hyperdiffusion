@@ -148,7 +148,7 @@ def knn(Mxx, Mxy, Myy, k, sqrt=False):
     count = torch.zeros(n0 + n1).to(Mxx)
     for i in range(0, k):
         count = count + label.index_select(0, idx[i])
-    pred = torch.ge(count, (float(k) / 2) * torch.ones(n0 + n1).to(Mxx)).float()
+    pred = torch.ge(count, (float(k) / 2) * torch.ones(n0 + n1).to(Mxx)).type(torch.float32)
 
     s = {
         "tp": (pred * label).sum(),
@@ -163,7 +163,7 @@ def knn(Mxx, Mxy, Myy, k, sqrt=False):
             "recall": s["tp"] / (s["tp"] + s["fn"] + 1e-10),
             "acc_t": s["tp"] / (s["tp"] + s["fn"] + 1e-10),
             "acc_f": s["tn"] / (s["tn"] + s["fp"] + 1e-10),
-            "acc": torch.eq(label, pred).float().mean(),
+            "acc": torch.eq(label, pred).type(torch.float32).mean(),
         }
     )
     return s
