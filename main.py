@@ -6,6 +6,7 @@ from hyperdiffusion import HyperDiffusion
 
 # Using it to make pyrender work on clusters
 os.environ["PYOPENGL_PLATFORM"] = "egl"
+
 import sys
 from datetime import datetime
 from os.path import join
@@ -51,6 +52,7 @@ def main(cfg: DictConfig):
             Config.config["mlp_config"]["params"]['device'] = 'mps'
             Config.config["transformer_config"]["params"]['device'] = 'mps'
             cfg['device'] = 'mps'
+            os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
         device = torch.device('mps')
         devices = 1 # on MPS it supports single-device operation only.

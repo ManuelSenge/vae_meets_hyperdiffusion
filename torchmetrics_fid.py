@@ -271,8 +271,8 @@ class FrechetInceptionDistance(Metric):
         fake_features = dim_zero_cat(self.fake_features)
         # computation is extremely sensitive so it needs to happen in double precision
         orig_dtype = real_features.dtype
-        real_features = real_features.double()
-        fake_features = fake_features.double()
+        real_features = real_features.type(torch.float32)
+        fake_features = fake_features.type(torch.float32)
 
         # calculate mean and covariance
         n = real_features.shape[0]

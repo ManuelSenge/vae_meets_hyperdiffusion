@@ -13,16 +13,24 @@ from torchmetrics_fid import FrechetInceptionDistance
 # Using edited 2D-FID code of torch_metrics
 fid = FrechetInceptionDistance(reset_real_features=True)
 
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+    device = torch.device('mps')
+else:
+    device = torch.device('cpu')
+
 
 def calculate_fid_3d(
     sample_pcs,
     ref_pcs,
     wandb_logger,
     path="Pointnet_Pointnet2_pytorch/log/classification/pointnet2_ssg_wo_normals/checkpoints/best_model.pth",
-):
+):  
+    global device
     batch_size = 10
     point_net = pointnet2_cls_ssg.get_model(40, normal_channel=False)
-    checkpoint = torch.load(path)
+    checkpoint = torch.load(path, map_location=device)
     point_net.load_state_dict(checkpoint["model_state_dict"])
     point_net.eval().to(sample_pcs.device)
     count = len(sample_pcs)
