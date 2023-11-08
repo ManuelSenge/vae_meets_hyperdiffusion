@@ -3,9 +3,17 @@ import os
 from dataset import VoxelDataset, WeightDataset
 from hd_utils import Config, get_mlp
 from hyperdiffusion import HyperDiffusion
+import sys
+import warnings
+
+warnings.filterwarnings("ignore", category=UserWarning)
 
 # Using it to make pyrender work on clusters
-os.environ["PYOPENGL_PLATFORM"] = "egl"
+if sys.platform != "win32":
+    os.environ["PYOPENGL_PLATFORM"] = "egl"
+else:
+    os.environ["PL_TORCH_DISTRIBUTED_BACKEND"] = "gloo"
+
 import sys
 from datetime import datetime
 from os.path import join
@@ -35,33 +43,33 @@ def main(cfg: DictConfig):
     Config.config = config = cfg
     method = Config.get("method")
     mlp_kwargs = None
-    
+
     if torch.cuda.is_available():
         # adding the device to the config
         with open_dict(Config.config):
-            Config.config["mlp_config"]["params"]['device'] = 'cuda'
-            Config.config["transformer_config"]["params"]['device'] = 'cuda'
-            cfg['device'] = 'cuda'
+            Config.config["mlp_config"]["params"]["device"] = "cuda"
+            Config.config["transformer_config"]["params"]["device"] = "cuda"
+            cfg["device"] = "cuda"
 
-        device = torch.device('cuda')
+        device = torch.device("cuda")
         devices = torch.cuda.device_count()
         strategy = "ddp"
     elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
         with open_dict(Config.config):
-            Config.config["mlp_config"]["params"]['device'] = 'mps'
-            Config.config["transformer_config"]["params"]['device'] = 'mps'
-            cfg['device'] = 'mps'
+            Config.config["mlp_config"]["params"]["device"] = "mps"
+            Config.config["transformer_config"]["params"]["device"] = "mps"
+            cfg["device"] = "mps"
 
-        device = torch.device('mps')
-        devices = 1 # on MPS it supports single-device operation only.
-        strategy = None # MPS accelerator is incompatible with DDP family of strategies. It supports single-device operation only.
+        device = torch.device("mps")
+        devices = 1  # on MPS it supports single-device operation only.
+        strategy = None  # MPS accelerator is incompatible with DDP family of strategies. It supports single-device operation only.
     else:
         with open_dict(Config.config):
-            Config.config["mlp_config"]["params"]['device'] = 'cpu'
-            Config.config["transformer_config"]["params"]['device'] = 'cpu'
-            cfg['device'] = 'cdu'
+            Config.config["mlp_config"]["params"]["device"] = "cpu"
+            Config.config["transformer_config"]["params"]["device"] = "cpu"
+            cfg["device"] = "cdu"
 
-        device = torch.device('cpu')
+        device = torch.device("cpu")
         strategy = "ddp"
 
     # In HyperDiffusion, we need to know the specifications of MLPs that are used for overfitting
@@ -111,6 +119,7 @@ def main(cfg: DictConfig):
     )
     if not cfg.mlp_config.params.move:
         train_object_names = set([str.split(".")[0] for str in train_object_names])
+
     # Check if dataset folder already has train,test,val split; create otherwise.
     if method == "hyper_3d":
         mlps_folder_all = mlps_folder_train
@@ -277,7 +286,7 @@ def main(cfg: DictConfig):
     )
 
     lr_monitor = pl.callbacks.LearningRateMonitor(logging_interval="epoch")
-    
+
     trainer = pl.Trainer(
         accelerator="gpu",
         devices=devices,

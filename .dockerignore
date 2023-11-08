@@ -1,0 +1,14 @@
+**/*.pyc
+**/*.pyo
+**/*.mo
+.gitignore
+.git/
+**/__pycache__/
+Dockerfile
+db.sqlite3
+**/*.md
+lightning_checkpoints/
+meshes/
+orig_meshes/
+outputs/
+wandb/

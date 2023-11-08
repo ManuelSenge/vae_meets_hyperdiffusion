@@ -1,0 +1,19 @@
+version: "0.0.1"
+services:
+  hyperdiffusion:
+    container_name: hyperdiffusion
+    tty: true
+    build:
+      context: .
+      dockerfile: Dockerfile
+    shm_size: 1gb
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    environment:
+      - WANDB_API_KEY=FILLKEYHERE #${WANDB_API_KEY}
+      - CONDA_DIR=/opt/conda

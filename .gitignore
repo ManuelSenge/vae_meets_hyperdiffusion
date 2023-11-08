@@ -1,6 +1,8 @@
 wandb
 outputs
 siren/experiment_scripts/logs
+data/02691156_2048_pc
+mlp_weights/3d_128_plane_multires_4_manifoldplus_slower_no_clipgrad
 orig_meshes
 .idea
 meshes
