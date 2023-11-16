@@ -47,16 +47,16 @@ def main(cfg: DictConfig):
     output_file = 'output_'
     checkpoint_path = output_dir
     N_EPOCHS = 30
-    learning_rate = 0.001
+    learning_rate = 0.0001
     BS = 32
-    lob_wandb = True
+    lob_wandb = False
     random.seed(SEED)
     np.random.seed(SEED)
 
     if lob_wandb:
         wandb.init( project="VAE",
                     entity="adl-cv",
-                    name=f'first_test',
+                    name=f'first_test_lr{learning_rate}',
                     group='first_test',
                     config={
                     "learning_rate": learning_rate,
@@ -146,8 +146,8 @@ def main(cfg: DictConfig):
                                    device=device,
                                    enc_chans=[64, 32, 16, 1],
                                    enc_kernal_sizes=[8, 6, 3, 3],
-                                   self_attention_encoder=False,
-                                   self_attention_decoder=False)
+                                   self_attention_encoder=True,
+                                   self_attention_decoder=True)
 
     #print(summary(model, (1, 36737), device="cpu"))
 

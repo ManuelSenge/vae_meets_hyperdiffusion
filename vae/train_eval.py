@@ -15,7 +15,7 @@ def train(model, iterator, optimizer, loss, device):
     
         loss_val.backward()
         optimizer.step()
-        
+        print(loss_val.item())
         epoch_loss += loss_val.item()
             
 
