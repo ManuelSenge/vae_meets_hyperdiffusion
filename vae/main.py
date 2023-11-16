@@ -1,4 +1,5 @@
-from model import VariationalAutoencoder
+#from model_linear import VariationalAutoencoder
+from model_transformer_conv import VariationalAutoencoder
 from loss import VAELoss
 import torch.nn as nn
 import torch
@@ -48,12 +49,25 @@ def main(cfg: DictConfig):
     N_EPOCHS = 30
     learning_rate = 0.001
     BS = 32
-    wandb = 0
+    lob_wandb = True
+    random.seed(SEED)
+    np.random.seed(SEED)
+
+    if lob_wandb:
+        wandb.init( project="VAE",
+                    entity="adl-cv",
+                    name=f'first_test',
+                    group='first_test',
+                    config={
+                    "learning_rate": learning_rate,
+                    "batch_size": BS,
+                    "SEED": SEED,
+                    "epochs": N_EPOCHS,
+                    })
 
     dataset_path = os.path.join('..', Config.config["dataset_dir"], Config.config["dataset"])
 
     mlps_folder_train = '../' + Config.get("mlps_folder_train")
-    wandb_logger = None # is not needed, but a param for Dataset
     mlp_kwargs = Config.config["mlp_config"]["params"]
 
     train_object_names = np.genfromtxt(
@@ -69,27 +83,13 @@ def main(cfg: DictConfig):
         os.path.join(dataset_path, "test_split.lst"), dtype="str"
     )
     test_object_names = set([str.split(".")[0] for str in test_object_names])
-    
-
-    random.seed(SEED)
-    np.random.seed(SEED)
-    if bool(wandb):
-        wandb.init( project="idp-rna-fold",
-                    entity="manuelsenge",
-                    name=f'BS_{BS}_lr_{learning_rate}',
-                    group='no_finetuning',
-                    config={
-                    "learning_rate": learning_rate,
-                    "batch_size": BS,
-                    "SEED": SEED,
-                    "epochs": N_EPOCHS,
-                    })
+ 
 
     # create dataset and dataloader
     print('create dataset...')
     train_dt = WeightDataset(
         mlps_folder_train,
-        wandb_logger,
+        None,
         0, # model.dims hardcoded in Transformer
         mlp_kwargs,
         cfg,
@@ -106,7 +106,7 @@ def main(cfg: DictConfig):
 
     val_dt = WeightDataset(
         mlps_folder_train,
-        wandb_logger,
+        None,
         0,
         mlp_kwargs,
         cfg,
@@ -123,7 +123,7 @@ def main(cfg: DictConfig):
 
     test_dt = WeightDataset(
         mlps_folder_train,
-        wandb_logger,
+        None,
         0,
         mlp_kwargs,
         cfg,
@@ -139,9 +139,18 @@ def main(cfg: DictConfig):
     )
 
     # create model loss and optimizer
-    model = VariationalAutoencoder(latent_dims=512, device=device)
-    summary(model, (1, 36737), device="cpu")
-    1/0
+    #model = VariationalAutoencoder(latent_dims=512, device=device)
+    print('create model..')
+    model = VariationalAutoencoder(input_dim=36737,
+                                   latent_dims=512,
+                                   device=device,
+                                   enc_chans=[64, 32, 16, 1],
+                                   enc_kernal_sizes=[8, 6, 3, 3],
+                                   self_attention_encoder=False,
+                                   self_attention_decoder=False)
+
+    #print(summary(model, (1, 36737), device="cpu"))
+
     model = model.to(device)
     print(f'model created..')
 
@@ -172,7 +181,7 @@ def main(cfg: DictConfig):
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
 
         if wandb:
-                wandb.log({"train/loss": train_loss, "val/loss": valid_loss})
+            wandb.log({"train/loss": train_loss, "val/loss": valid_loss})
 
         if valid_loss < best_valid_loss:
             best_valid_loss = valid_loss
