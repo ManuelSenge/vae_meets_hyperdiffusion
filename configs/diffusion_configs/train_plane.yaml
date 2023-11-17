@@ -13,20 +13,24 @@ augment_amount: 0
 jitter_augment: False
 normalization_factor: 1
 timesteps: 500
-epochs: 1000
+epochs: 3000
 scheduler: True
 scheduler_step: 200
 best_model_save_path:
 mode: train
 mlps_folder_train: ./mlp_weights/3d_128_plane_multires_4_manifoldplus_slower_no_clipgrad
-model_resume_path: ./lightning_checkpoints/2023-11-05 23-03-46.332080-revived-serenity-45-5693tutu/last-epoch=02-train_loss=0.33-val_fid=0.00.ckpt
+model_resume_path: ./lightning_checkpoints/2023-11-06 08-07-40.129443-silvery-serenity-46-tb25jtj0/last-epoch=48-train_loss=0.24-val_fid=0.00.ckpt
 sampling: ddim
 val_fid_calculation_period: 50
 val_sample_generation_period: 100
 val_sample_mesh_resolution: 256
 lr: 0.0002
 batch_size: 32
+metric_batch_size: 8
 accumulate_grad_batches: 1
+pointnet_config:
+  params:
+    batch_size: 5
 val:
   num_points: 2048
   num_samples: 60
