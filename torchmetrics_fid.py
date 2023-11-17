@@ -21,12 +21,10 @@ from torch.nn import Module
 from torchmetrics.metric import Metric
 from torchmetrics.utilities import rank_zero_info, rank_zero_warn
 from torchmetrics.utilities.data import dim_zero_cat
-from torchmetrics.utilities.imports import (_SCIPY_AVAILABLE,
-                                            _TORCH_FIDELITY_AVAILABLE)
+from torchmetrics.utilities.imports import _SCIPY_AVAILABLE, _TORCH_FIDELITY_AVAILABLE
 
 if _TORCH_FIDELITY_AVAILABLE:
-    from torch_fidelity.feature_extractor_inceptionv3 import \
-        FeatureExtractorInceptionV3
+    from torch_fidelity.feature_extractor_inceptionv3 import FeatureExtractorInceptionV3
 else:
 
     class FeatureExtractorInceptionV3(Module):  # type: ignore
@@ -217,11 +215,11 @@ class FrechetInceptionDistance(Metric):
     ) -> None:
         super().__init__(**kwargs)
 
-        rank_zero_warn(
-            "Metric `FrechetInceptionDistance` will save all extracted features in buffer."
-            " For large datasets this may lead to large memory footprint.",
-            UserWarning,
-        )
+        # rank_zero_warn(
+        #     "Metric `FrechetInceptionDistance` will save all extracted features in buffer."
+        #     " For large datasets this may lead to large memory footprint.",
+        #     UserWarning,
+        # )
 
         if isinstance(feature, int):
             if not _TORCH_FIDELITY_AVAILABLE:

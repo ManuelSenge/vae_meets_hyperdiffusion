@@ -10,11 +10,20 @@ from scipy.spatial.transform import Rotation
 from tqdm import tqdm
 
 import wandb
-from diffusion.gaussian_diffusion import (GaussianDiffusion, LossType,
-                                          ModelMeanType, ModelVarType)
+from diffusion.gaussian_diffusion import (
+    GaussianDiffusion,
+    LossType,
+    ModelMeanType,
+    ModelVarType,
+)
 from evaluation_metrics_3d import compute_all_metrics, compute_all_metrics_4d
-from hd_utils import (Config, calculate_fid_3d, generate_mlp_from_weights,
-                      render_mesh, render_meshes)
+from hd_utils import (
+    Config,
+    calculate_fid_3d,
+    generate_mlp_from_weights,
+    render_mesh,
+    render_meshes,
+)
 from siren import sdf_meshing
 from siren.dataio import anime_read
 from siren.experiment_scripts.test_sdf import SDFDecoder
@@ -104,7 +113,7 @@ class HyperDiffusion(pl.LightningModule):
                 self.mlp_kwargs.model_type,
                 None,
                 "nerf" if self.mlp_kwargs.model_type == "nerf" else "mlp",
-                self.mlp_kwargs
+                self.mlp_kwargs,
             )
             sdf_decoder.model = mlp.to(self.cfg.device)
             if not self.mlp_kwargs.move:
@@ -194,7 +203,7 @@ class HyperDiffusion(pl.LightningModule):
 
         # Handle 3D/4D sample generation
         if self.method == "hyper_3d":
-            if self.current_epoch % 10 == 0:
+            if self.current_epoch % self.cfg.val_sample_generation_period == 0:
                 x_0s = (
                     self.diff.ddim_sample_loop(self.model, (4, *self.image_size[1:]))
                     .cpu()
@@ -212,7 +221,9 @@ class HyperDiffusion(pl.LightningModule):
                     for i, x_0 in enumerate(x_0s):
                         out_imgs = []
                         mesh_frames, _ = self.generate_meshes(
-                            x_0.unsqueeze(0), None, res=256
+                            x_0.unsqueeze(0),
+                            None,
+                            res=self.cfg.val_sample_mesh_resolution,
                         )
                         for mesh in mesh_frames:
                             rot_matrix = Rotation.from_euler(
@@ -231,7 +242,9 @@ class HyperDiffusion(pl.LightningModule):
                             }
                         )
                 else:
-                    meshes, sdfs = self.generate_meshes(x_0s, None, res=512)
+                    meshes, sdfs = self.generate_meshes(
+                        x_0s, None, res=self.cfg.val_sample_mesh_resolution
+                    )
                     for mesh in meshes:
                         mesh.vertices *= 2
                     print(
@@ -247,7 +260,7 @@ class HyperDiffusion(pl.LightningModule):
                     )
         # Handle Voxel baseline sample generation
         elif self.method == "raw_3d":
-            if self.current_epoch % 5 == 0:
+            if self.current_epoch % self.cfg.val_sample_generation_period == 0:
                 x_0s = (
                     self.diff.ddim_sample_loop(
                         self.model, (self.cfg.batch_size, *self.image_size[1:])
@@ -304,7 +317,7 @@ class HyperDiffusion(pl.LightningModule):
                 self.mlp_kwargs.model_type,
                 None,
                 "nerf" if self.mlp_kwargs.model_type == "nerf" else "mlp",
-                self.mlp_kwargs
+                self.mlp_kwargs,
             )
             sdf_decoder.model = mlp.to(self.cfg.device).eval()
             with torch.no_grad():
@@ -628,15 +641,17 @@ class HyperDiffusion(pl.LightningModule):
         print("Starting metric computation for", split_type)
 
         fid = calculate_fid_3d(
-            sample_pcs.to(self.cfg.device), ref_pcs.to(self.cfg.device), self.logger
+            sample_pcs.to(self.cfg.device),
+            ref_pcs.to(self.cfg.device),
+            self.logger,
+            batch_size=self.cfg.pointnet_config.params.batch_size,
         )
         metrics = compute_all_metrics(
             sample_pcs.to(self.cfg.device),
             ref_pcs.to(self.cfg.device),
-            16 if split_type == "test" else 16,
+            16 if split_type == "test" else self.cfg.metric_batch_size,
             self.logger,
         )
-        metrics["fid"] = fid.item()
 
         print("Completed metric computation for", split_type)
 

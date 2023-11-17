@@ -6,8 +6,9 @@ import torch
 import trimesh
 
 from mlp_models import MLP, MLP3D
-from Pointnet_Pointnet2_pytorch.log.classification.pointnet2_ssg_wo_normals import \
-    pointnet2_cls_ssg
+from Pointnet_Pointnet2_pytorch.log.classification.pointnet2_ssg_wo_normals import (
+    pointnet2_cls_ssg,
+)
 from torchmetrics_fid import FrechetInceptionDistance
 
 # Using edited 2D-FID code of torch_metrics
@@ -18,9 +19,10 @@ def calculate_fid_3d(
     sample_pcs,
     ref_pcs,
     wandb_logger,
+    batch_size=10,
     path="Pointnet_Pointnet2_pytorch/log/classification/pointnet2_ssg_wo_normals/checkpoints/best_model.pth",
 ):
-    batch_size = 10
+    batch_size = batch_size
     point_net = pointnet2_cls_ssg.get_model(40, normal_channel=False)
     checkpoint = torch.load(path)
     point_net.load_state_dict(checkpoint["model_state_dict"])
