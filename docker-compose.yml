@@ -1,0 +1,24 @@
+version: "0.0.1"
+services:
+  hyperdiffusion:
+    container_name: hyperdiffusion
+    tty: true
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./vols/data:/hyperdiffusion/data
+      - ./vols/checkpoints:/hyperdiffusion/checkpoints
+      - ./vols/mlp_weights:/hyperdiffusion/mlp_weights
+      - ./src/configs:/hyperdiffusion/configs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    environment:
+      - CONDA_DIR=/opt/conda
+    env_file:
+      - .env

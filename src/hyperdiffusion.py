@@ -5,7 +5,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import trimesh
-from pytorch_lightning.utilities.types import EPOCH_OUTPUT
+# from pytorch_lightning.utilities.types import EPOCH_OUTPUT
 from scipy.spatial.transform import Rotation
 from tqdm import tqdm
 
@@ -188,7 +188,7 @@ class HyperDiffusion(pl.LightningModule):
         for metric_name in metrics:
             self.log("val/" + metric_name, metrics[metric_name])
 
-    def training_epoch_end(self, outputs: EPOCH_OUTPUT) -> None:
+    def training_epoch_end(self, outputs) -> None:
         epoch_loss = sum(output["loss"] for output in outputs) / len(outputs)
         self.log("epoch_loss", epoch_loss)
 

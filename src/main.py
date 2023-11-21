@@ -66,6 +66,11 @@ def main(cfg: DictConfig):
         device = torch.device('cpu')
         strategy = "ddp"
 
+
+    ###################################################################
+
+
+
     # In HyperDiffusion, we need to know the specifications of MLPs that are used for overfitting
     if "hyper" in method:
         mlp_kwargs = Config.config["mlp_config"]["params"]
@@ -297,7 +302,8 @@ def main(cfg: DictConfig):
         num_sanity_val_steps=0,
         accumulate_grad_batches=cfg.accumulate_grad_batches,
     )
-
+    import sys
+    sys.exit()
     if Config.get("mode") == "train":
         # If model_resume_path is provided (i.e., not None), the training will continue from that checkpoint
         trainer.fit(diffuser, train_dl, val_dl, ckpt_path=model_resume_path)
