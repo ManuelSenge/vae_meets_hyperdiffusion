@@ -1,0 +1,5 @@
+- When running eval on the existing package we need to make sure that pytorch-lightning==1.5.10
+- This doesnt work for train => we need more recent lightning
+- To install these dependencies with poetry use poetry source add --priority=supplemental torch-stable https://download.pytorch.org/whl/
+- To export requirements as requirements.txt: poetry export -f requirements.txt --output ./src/requirements.txt
+- Eval / Test call: python main.py --config-name=train_plane mode=test best_model_save_path=./checkpoints/plane.ckpt

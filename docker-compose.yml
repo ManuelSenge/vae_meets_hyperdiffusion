@@ -1,6 +1,7 @@
 version: "0.0.1"
 services:
   hyperdiffusion:
+    shm_size: 16gb
     container_name: hyperdiffusion
     tty: true
     build:

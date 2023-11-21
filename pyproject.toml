@@ -18,10 +18,18 @@ torch-fidelity = "^0.3.0"
 libigl = "^2.4.1"
 matplotlib = "^3.8.2"
 scikit-video = "^1.1.11"
-lightning = "^2.1.2"
 plyfile = "^1.0.2"
 einops = "^0.7.0"
+pytorch-lightning = "1.5.10"
+torch = "2.0.1+cu118"
+torchvision = "0.15.2+cu118"
 
+
+
+[[tool.poetry.source]]
+name = "torch-stable"
+url = "https://download.pytorch.org/whl/"
+priority = "supplemental"
 
 [build-system]
 requires = ["poetry-core"]

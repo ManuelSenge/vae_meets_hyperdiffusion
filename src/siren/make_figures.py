@@ -263,7 +263,7 @@ def make_convergence_plot(
             gt_img = imageio.imread(gt_path)
             pred_img = imageio.imread(pred_path)
 
-            psnr = skimage.measure.compare_psnr(gt_img, pred_img)
+            psnr = skimage.metrics.peak_signal_noise_ratio(gt_img, pred_img)
             psnrs[key].append(psnr)
 
         np.save(psnrs_path, np.array(psnrs[key]))
