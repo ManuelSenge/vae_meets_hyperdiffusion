@@ -1,6 +1,7 @@
 
 def train(model, iterator, optimizer, loss, device):
-    epoch_loss = 0
+    epoch_loss_val_mse = 0
+    epoch_loss_val_kl = 0
     
     model.train()
     for i, batch in enumerate(iterator): # batch is simply a batch of ci-matricies as a tensor as x and y are the same 
@@ -11,18 +12,19 @@ def train(model, iterator, optimizer, loss, device):
 
         predictions = model(weights)
 
-        loss_val = loss(predictions, weights)
-    
+        loss_val_mse, loss_val_kl = loss(predictions, weights)
+        loss_val = loss_val_mse + loss_val_kl
         loss_val.backward()
         optimizer.step()
-        print(loss_val.item())
-        epoch_loss += loss_val.item()
+        epoch_loss_val_mse += loss_val_mse.item()
+        epoch_loss_val_kl += loss_val_kl.item()
             
 
-    return epoch_loss / len(iterator)
+    return epoch_loss_val_mse / len(iterator), epoch_loss_val_kl / len(iterator)
 
 def evaluate(model, iterator, loss, device):
-    epoch_loss = 0
+    epoch_loss_val_mse = 0
+    epoch_loss_val_kl = 0
     
     model.eval()
     for i, batch in enumerate(iterator): # batch is simply a batch of ci-matricies as a tensor as x and y are the same 
@@ -32,8 +34,10 @@ def evaluate(model, iterator, loss, device):
 
         predictions = model(weights)
 
-        loss_val = loss(predictions, weights)
+        loss_val_mse, loss_val_kl = loss(predictions, weights)
+        loss_val = loss_val_mse + loss_val_kl
   
-        epoch_loss += loss_val.item()
+        epoch_loss_val_mse += loss_val_mse.item()
+        epoch_loss_val_kl += loss_val_kl.item()
 
-    return epoch_loss / len(iterator)
+    return epoch_loss_val_mse / len(iterator), epoch_loss_val_kl / len(iterator)

@@ -24,7 +24,6 @@ from torchsummary import summary
 random.seed(1234)
 np.random.seed(1234)
 
-
 @hydra.main(
     version_base=None,
     config_path="../configs/diffusion_configs",
@@ -33,30 +32,34 @@ np.random.seed(1234)
 def main(cfg: DictConfig):
     Config.config = cfg
     cfg.filter_bad_path = '../' + cfg.filter_bad_path
-    print(cfg.filter_bad_path)
-    if torch.cuda.is_available():
-        device = torch.device('cuda')
-    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
-        device = torch.device('mps')
-    else:
-        device = torch.device('cpu')
-    device = 'cpu'
-        
-    output_dir = './outputs/'
+    
+    output_dir = '/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/vae/outputs/'
+    attention_encoder = "0011"
+    attention_decoder = attention_encoder[::-1]
+    BS = 64
     SEED = 1234
+    N_EPOCHS = 20
+    learning_rate = 0.001
+    device = "auto"
+    lob_wandb = 1
+    if device == 'auto':
+        if torch.cuda.is_available():
+            device = torch.device('cuda')
+        elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+            device = torch.device('mps')
+        else:
+            device = torch.device('cpu')
+
     output_file = 'output_'
     checkpoint_path = output_dir
-    N_EPOCHS = 30
-    learning_rate = 0.0001
-    BS = 32
-    lob_wandb = False
+    
     random.seed(SEED)
     np.random.seed(SEED)
 
     if lob_wandb:
         wandb.init( project="VAE",
                     entity="adl-cv",
-                    name=f'first_test_lr{learning_rate}',
+                    name=f'first_test_lr{learning_rate}_E{attention_encoder}_D{attention_decoder}',
                     group='first_test',
                     config={
                     "learning_rate": learning_rate,
@@ -146,8 +149,8 @@ def main(cfg: DictConfig):
                                    device=device,
                                    enc_chans=[64, 32, 16, 1],
                                    enc_kernal_sizes=[8, 6, 3, 3],
-                                   self_attention_encoder=True,
-                                   self_attention_decoder=True)
+                                   self_attention_encoder=[int(elem) for elem in list(attention_encoder)],
+                                   self_attention_decoder=[int(elem) for elem in list(attention_decoder)])
 
     #print(summary(model, (1, 36737), device="cpu"))
 
@@ -175,26 +178,27 @@ def main(cfg: DictConfig):
 
     for epoch in range(start_epoch, N_EPOCHS):
         start_time = time.time()
-        train_loss = train(model, train_dl, optimizer, loss, device)
-        valid_loss = evaluate(model, val_dl, loss, device)
+        train_mse_loss, train_kl_loss = train(model, train_dl, optimizer, loss, device)
+        val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device)
         end_time = time.time()
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
 
-        if wandb:
-            wandb.log({"train/loss": train_loss, "val/loss": valid_loss})
+        if lob_wandb:
+            wandb.log({"train/mse_loss": train_mse_loss, "train/kl_loss": train_kl_loss,\
+                "val/mse_loss": val_mse_loss, "val/kl_loss":val_kl_loss})
 
-        if valid_loss < best_valid_loss:
-            best_valid_loss = valid_loss
+        if val_mse_loss+val_kl_loss < best_valid_loss:
+            best_valid_loss = val_mse_loss+val_kl_loss
             torch.save(model.state_dict(), f"{output_dir}/{output_file}{SEED}.pt")
 
         print(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s')
-        print(f'\tTrain Loss: {train_loss:.3f}')
-        print(f'\t Val. Loss: {valid_loss:.3f}')
+        print(f'\t Train MSE Loss: {train_mse_loss:.3f} Train KL Loss: {train_kl_loss:.3f}')
+        print(f'\t Val. MSE Loss: {val_mse_loss:.3f} Val. KL Loss: {val_kl_loss:.3f}')
 
         f = open(f"{output_dir}/{output_file}{SEED}.txt", "a")
         f.write(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s\n')
-        f.write(f'\tTrain Loss: {train_loss:.3f}\n')
-        f.write(f'\tVal. Loss: {valid_loss:.3f}\n')
+        f.write(f'\tTrain MSE Loss: {train_mse_loss:.3f} Train KL Loss: {train_kl_loss:.3f}\n')
+        f.write(f'\tVal. MSE Loss: {val_mse_loss:.3f} Val. KL Loss: {val_kl_loss:.3f}\n')
         f.close()
         
         # save model and optimizer
@@ -208,16 +212,17 @@ def main(cfg: DictConfig):
 
     # load the best model and test it on the test set
     model.load_state_dict(torch.load(f"{output_dir}/{output_file}{SEED}.pt"))
-    test_loss = evaluate(model, test_dl, loss, device)
+    test_mse_loss, test_kl_loss = evaluate(model, test_dl, loss, device)
 
-    if wandb:
-        wandb.log({"test/loss": test_loss})
+    if lob_wandb:
+        wandb.log({"test/mse_loss": test_mse_loss, "test/kl_loss":test_kl_loss})
 
-    print(f'Test Loss: {test_loss:.3f}')
+    print(f'Test MSE Loss: {test_mse_loss:.3f} Test KL Loss: {test_kl_loss:.3f}')
     f = open(f"{output_dir}/{output_file}{SEED}.txt", "a")
-    f.write(f'Test Loss: {test_loss:.3f}\n')
+    f.write(f'Test MSE Loss: {test_mse_loss:.3f} Test KL Loss: {test_kl_loss:.3f}\n')
     f.close()
 
 
 if __name__ == "__main__":
+    # load param
     main()

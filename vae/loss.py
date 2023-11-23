@@ -7,4 +7,4 @@ class VAELoss(nn.Module):
         self.autoencoder = autoencoder
 
     def forward(self, x, x_pred):
-        return ((x - x_pred)**2).sum() + self.autoencoder.encoder.kl
+        return ((x - x_pred)**2).mean(), self.autoencoder.encoder.kl
