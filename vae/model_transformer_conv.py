@@ -24,7 +24,7 @@ class Encoder(nn.Module):
             self.enc_conv_layers.append(nn.Conv1d(in_channels=enc_in, out_channels=enc_out, kernel_size=enc_kernel, stride = 2, padding = 1))
             self.pooling.append(nn.MaxPool1d(2, stride=1, return_indices=True))
             if bool(att_flag):
-                encoder_layer = nn.TransformerEncoderLayer(d_model=d, nhead=8)
+                encoder_layer = nn.TransformerEncoderLayer(d_model=d, nhead=1)
                 self.transformer_encoder.append(nn.TransformerEncoder(encoder_layer, num_layers=1))
             else:
                 self.transformer_encoder.append(None)
@@ -108,7 +108,8 @@ class Decoder(nn.Module):
         self.linear = nn.Sequential(nn.Linear(latent_dim, self.linear_input_output_dim),act_fn)
 
     def forward(self, z, indices_pooling, output_sizes):
-        indices_pooling.reverse()
+        if not indices_pooling is None:
+            indices_pooling.reverse()
         output_sizes.reverse()
         output = self.linear(z)
         for i in range(len(self.dec_conv_layers)):

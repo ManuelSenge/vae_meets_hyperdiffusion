@@ -33,8 +33,8 @@ def main(cfg: DictConfig):
     Config.config = cfg
     cfg.filter_bad_path = '../' + cfg.filter_bad_path
     
-    output_dir = '/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/vae/outputs/'
-    attention_encoder = "0011"
+    output_dir = '/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/vae/output_files/'
+    attention_encoder = "0000"
     attention_decoder = attention_encoder[::-1]
     BS = 64
     SEED = 1234
@@ -50,7 +50,7 @@ def main(cfg: DictConfig):
         else:
             device = torch.device('cpu')
 
-    output_file = 'output_'
+    output_file = f'attention_{attention_encoder}_lr_{learning_rate}'
     checkpoint_path = output_dir
     
     random.seed(SEED)
@@ -60,7 +60,7 @@ def main(cfg: DictConfig):
         wandb.init( project="VAE",
                     entity="adl-cv",
                     name=f'first_test_lr{learning_rate}_E{attention_encoder}_D{attention_decoder}',
-                    group='first_test',
+                    group='conv_attention_vae',
                     config={
                     "learning_rate": learning_rate,
                     "batch_size": BS,
