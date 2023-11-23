@@ -49,7 +49,7 @@ def main(cfg: DictConfig):
             device = torch.device('mps')
         else:
             device = torch.device('cpu')
-
+    
     output_file = f'attention_{attention_encoder}_lr_{learning_rate}'
     checkpoint_path = output_dir
     
@@ -151,7 +151,7 @@ def main(cfg: DictConfig):
                                    enc_kernal_sizes=[8, 6, 3, 3],
                                    self_attention_encoder=[int(elem) for elem in list(attention_encoder)],
                                    self_attention_decoder=[int(elem) for elem in list(attention_decoder)])
-
+    #device = 'cpu'
     #print(summary(model, (1, 36737), device="cpu"))
 
     model = model.to(device)
