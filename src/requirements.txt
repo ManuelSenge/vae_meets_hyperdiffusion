@@ -1213,6 +1213,9 @@ torch==2.0.1+cu118 ; python_version >= "3.10" \
 torchmetrics==1.2.0 ; python_version >= "3.10" \
     --hash=sha256:7eb28340bde45e13187a9ad54a4a7010a50417815d8181a5df6131f116ffe1b7 \
     --hash=sha256:da2cb18822b285786d082c40efb9e1d861aac425f58230234fe6ce233cf002f8
+torchsummary==1.5.1 ; python_version >= "3.10" \
+    --hash=sha256:10f41d1743fb918f83293f13183f532ab1bb8f6639a1b89e5f8592ec1919a976 \
+    --hash=sha256:981bf689e22e0cf7f95c746002f20a24ad26aa6b9d861134a14bc6ce92230590
 torchvision==0.15.2+cu118 ; python_version >= "3.10" \
     --hash=sha256:19ca4ab5d6179bbe53cff79df1a855ee6533c2861ddc7389f68349d8b9f8302a \
     --hash=sha256:27be62ec887ab9a7b86612eac55ba80f8c23978c8afd5e4339669a1bbc4925ea \

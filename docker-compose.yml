@@ -10,8 +10,11 @@ services:
     volumes:
       - ./vols/data:/hyperdiffusion/data
       - ./vols/checkpoints:/hyperdiffusion/checkpoints
+      - ./vols/output_files:/hyperdiffusion/output_files
       - ./vols/mlp_weights:/hyperdiffusion/mlp_weights
+      - ./vols/gen_meshes:/hyperdiffusion/gen_meshes
       - ./src/configs:/hyperdiffusion/configs
+      - ./src/vae:/hyperdiffusion/vae
     deploy:
       resources:
         reservations:
