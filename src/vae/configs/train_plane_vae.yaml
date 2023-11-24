@@ -1,0 +1,39 @@
+method: hyper_3d
+calculate_metric_on_test: False
+dedup: False
+test_sample_mult: 1.1
+filter_bad: True
+filter_bad_path: ../data/plane_problematic_shapes.txt
+use_wandb: True
+dataset_dir: ../data
+dataset: 02691156
+best_model_save_path: ../output_files/
+mlps_folder_train: ../mlp_weights/3d_128_plane_multires_4_manifoldplus_slower_no_clipgrad
+sampling: ddim
+lr: 0.0002
+batch_size: 32
+epochs: 80
+attention_layers_encoder: [False, False, True, True]
+enc_chans: [64, 32, 16, 1]
+enc_kernel_sizes: [8, 6, 3, 3]
+num_att_layers: 1
+augment: False
+jitter_augment: False
+normalization_factor: 1
+accumulate_grad_batches: 1
+val:
+  num_points: 2048
+  num_samples: 60
+mlp_config:
+  params:
+    model_type: mlp_3d
+    out_size: 1
+    hidden_neurons:
+      - 128
+      - 128
+      - 128
+    output_type: occ
+    out_act: sigmoid
+    multires: 4
+    use_leaky_relu: False
+    move: False

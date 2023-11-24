@@ -6,10 +6,7 @@ ENV LANG C.UTF-8
 RUN apt-get update && apt-get -y install wget vim-gtk python3-pip python3-pip-whl libgl1-mesa-glx libglfw3-dev libgles2-mesa-dev python3-venv software-properties-common libgeos-dev
 RUN add-apt-repository ppa:deadsnakes/ppa && apt-get update 
 
-RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
-    /bin/bash ~/miniconda.sh -b -p /opt/conda
-
-ENV PATH=/opt/conda/bin:$PATH
+ENV PATH=/bin/python3:$PATH
 
 COPY ./src hyperdiffusion
 

@@ -25,7 +25,7 @@ class Encoder(nn.Module):
         for (enc_in, enc_out), enc_kernel, d, att_flag, nhead in zip(enc_chans_io, enc_kernal_sizes, dims, self_attention, nheads):
             self.enc_conv_layers.append(nn.Conv1d(in_channels=enc_in, out_channels=enc_out, kernel_size=enc_kernel, stride = 2, padding = 1))
             #self.pooling.append(nn.MaxPool1d(2, stride=1, return_indices=True))
-            if bool(att_flag):
+            if att_flag:
                 print(d, nhead)
                 encoder_layer = nn.TransformerEncoderLayer(d_model=d, nhead=nhead)
                 self.transformer_encoder.append(nn.TransformerEncoder(encoder_layer, num_layers=num_att_layers))

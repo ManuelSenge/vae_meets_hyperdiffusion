@@ -20,53 +20,53 @@ from omegaconf import DictConfig
 import hydra
 from torchsummary import summary
 
+
+SEED = 1234
 # need this seed for the lookup (as data is randomly shuffled)
-random.seed(1234)
-np.random.seed(1234)
+random.seed(SEED)
+np.random.seed(SEED)
 
 @hydra.main(
     version_base=None,
-    config_path="../configs/diffusion_configs",
-    config_name="train_plane",
+    config_path="./configs",
+    config_name="train_plane_vae",
 )
 def main(cfg: DictConfig):
     Config.config = cfg
-    cfg.filter_bad_path = '../' + cfg.filter_bad_path
     
-    output_dir = '../output_files/'
-    attention_encoder = "0011"
-    attention_decoder = attention_encoder[::-1]
-    BS = 64
-    SEED = 1234
-    N_EPOCHS = 500
-    
-    num_att_layers = 1
-    learning_rate = 0.0002
-    enc_chans = [128, 64, 32, 1]
-    enc_kernel_sizes = [8, 6, 3, 3]
-    device = "auto"
-    lob_wandb = 1
-    if device == 'auto':
-        if torch.cuda.is_available():
-            device = torch.device('cuda')
-        elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
-            device = torch.device('mps')
-        else:
-            device = torch.device('cpu')
-    
-    wandb_enc_channels = "_".join([str(enc) for enc in enc_chans])
-    wandb_enc_kernel_sizes = "_".join([str(enc) for enc in enc_kernel_sizes])
 
-    run_params_name = f'bn_lr{learning_rate}_E{attention_encoder}_num_att_layers{num_att_layers}_enc_chans{wandb_enc_channels}_enc_kernel_sizes{wandb_enc_kernel_sizes}'
+    attention_encoder = cfg.attention_layers_encoder
+    attention_decoder = attention_encoder[::-1]
+    N_EPOCHS = cfg.epochs
+    BS = cfg.batch_size
+
+    learning_rate = cfg.lr
+    enc_chans = cfg.enc_chans
+    enc_kernel_sizes = cfg.enc_kernel_sizes
+    num_att_layers = cfg.num_att_layers
+
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        device = torch.device('mps')
+    else:
+        device = torch.device('cpu')
+    
+    attention_encoder_text = "_".join(["1" if enc else "0" for enc in attention_encoder])
+    enc_channels_text = "_".join([str(enc) for enc in enc_chans])
+    enc_kernel_sizes_text = "_".join([str(enc) for enc in enc_kernel_sizes])
+
+    run_params_name = f'bn_lr{learning_rate}_E{attention_encoder_text}_num_att_layers_{num_att_layers}_enc_chans_{enc_channels_text}_enc_kernel_sizes_{enc_kernel_sizes_text}'
 
     output_file = f'{run_params_name}_{SEED}'
-    checkpoint_path = output_dir
     
     random.seed(SEED)
     np.random.seed(SEED)
 
+    print(run_params_name)
 
-    if lob_wandb:
+
+    if cfg.use_wandb:
         wandb.init( project="VAE",
                     entity="adl-cv",
                     name=f'first_test_{run_params_name}',
@@ -78,9 +78,9 @@ def main(cfg: DictConfig):
                     "epochs": N_EPOCHS,
                     })
 
-    dataset_path = os.path.join('..', Config.config["dataset_dir"], Config.config["dataset"])
+    dataset_path = os.path.join(Config.config["dataset_dir"], Config.config["dataset"])
 
-    mlps_folder_train = '../' + Config.get("mlps_folder_train")
+    mlps_folder_train =  Config.get("mlps_folder_train")
     mlp_kwargs = Config.config["mlp_config"]["params"]
 
     train_object_names = np.genfromtxt(
@@ -159,11 +159,11 @@ def main(cfg: DictConfig):
                                    device=device,
                                    enc_chans=enc_chans,
                                    enc_kernal_sizes=enc_kernel_sizes,
-                                   self_attention_encoder=[int(elem) for elem in list(attention_encoder)],
-                                   self_attention_decoder=[int(elem) for elem in list(attention_decoder)],
+                                   self_attention_encoder=attention_encoder,
+                                   self_attention_decoder=attention_decoder,
                                    num_att_layers=num_att_layers)
-    #device = 'cpu'
-    #print(summary(model, (1, 36737), device="cpu"))
+    # device = 'cpu'
+    # print(summary(model, (1, 36737), device="cpu"))
 
     model = model.to(device)
     print(f'model created..')
@@ -194,19 +194,19 @@ def main(cfg: DictConfig):
         end_time = time.time()
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
 
-        if lob_wandb:
+        if cfg.use_wandb:
             wandb.log({"train/mse_loss": train_mse_loss, "train/kl_loss": train_kl_loss,\
                 "val/mse_loss": val_mse_loss, "val/kl_loss":val_kl_loss})
 
         if val_mse_loss+val_kl_loss < best_valid_loss:
             best_valid_loss = val_mse_loss+val_kl_loss
-            torch.save(model.state_dict(), f"{output_dir}/{output_file}.pt")
+            torch.save(model.state_dict(), f"{cfg.best_model_save_path}/{output_file}.pt")
 
         print(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s')
         print(f'\t Train MSE Loss: {train_mse_loss:.3f} Train KL Loss: {train_kl_loss:.3f}')
         print(f'\t Val. MSE Loss: {val_mse_loss:.3f} Val. KL Loss: {val_kl_loss:.3f}')
 
-        f = open(f"{output_dir}/{output_file}.txt", "a")
+        f = open(f"{cfg.best_model_save_path}/{output_file}.txt", "a")
         f.write(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s\n')
         f.write(f'\tTrain MSE Loss: {train_mse_loss:.3f} Train KL Loss: {train_kl_loss:.3f}\n')
         f.write(f'\tVal. MSE Loss: {val_mse_loss:.3f} Val. KL Loss: {val_kl_loss:.3f}\n')
@@ -222,14 +222,14 @@ def main(cfg: DictConfig):
                     }, checkpoint_path)'''
 
     # load the best model and test it on the test set
-    model.load_state_dict(torch.load(f"{output_dir}/{output_file}.pt"))
+    model.load_state_dict(torch.load(f"{cfg.best_model_save_path}/{output_file}.pt"))
     test_mse_loss, test_kl_loss = evaluate(model, test_dl, loss, device)
 
-    if lob_wandb:
+    if cfg.use_wandb:
         wandb.log({"test/mse_loss": test_mse_loss, "test/kl_loss":test_kl_loss})
 
     print(f'Test MSE Loss: {test_mse_loss:.3f} Test KL Loss: {test_kl_loss:.3f}')
-    f = open(f"{output_dir}/{output_file}.txt", "a")
+    f = open(f"{cfg.best_model_save_path}/{output_file}.txt", "a")
     f.write(f'Test MSE Loss: {test_mse_loss:.3f} Test KL Loss: {test_kl_loss:.3f}\n')
     f.close()
 
