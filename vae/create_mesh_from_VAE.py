@@ -102,33 +102,40 @@ def generate_images_from_VAE(x_0):
 
 def sample_from_VAE(model, N_dist):
     sample = N_dist.sample((1, 512))
+    sample = sample.view((sample.shape[0], 1, sample.shape[1]))
     return model.decoder(sample)
 
 if __name__ == "__main__":
     num_imgs = 1
-    model_path = '/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/vae/output_files/attention_0000_lr_0.0011234.pt'
-    attention_encoder = "0000"
+    model_path = '/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/vae/output_files/bn_lr0.0002_E0011_num_att_layers1_enc_chans128_64_32_1_enc_kernel_sizes8_6_3_3_1234.pt'
+    attention_encoder = "0011"
     attention_decoder = attention_encoder[::-1]
+    log_wandb = 1
+    num_att_layers = 1
+    enc_chans = [128, 64, 32, 1]
+    enc_kernel_sizes = [8, 6, 3, 3]
 
-    '''
-    wandb.init(
-            entity='adl-cv',
-            project="VAE eval",
-            name="first-test",
-            config={'attention_encoder': attention_encoder, 'num_imgs':num_imgs},
-        )
+    if log_wandb:
+        wandb.init(
+                entity='adl-cv',
+                project="VAE eval",
+                name="batch_norm_0011_128_filter",
+                config={'attention_encoder': attention_encoder, 'num_imgs':num_imgs},
+            )
 
         wandb_logger = WandbLogger()
-    '''
+
 
     
     model = VariationalAutoencoder(input_dim=36737,
                                    latent_dims=512,
                                    device=device,
-                                   enc_chans=[64, 32, 16, 1],
-                                   enc_kernal_sizes=[8, 6, 3, 3],
+                                   enc_chans=enc_chans,
+                                   enc_kernal_sizes=enc_kernel_sizes,
                                    self_attention_encoder=[int(elem) for elem in list(attention_encoder)],
-                                   self_attention_decoder=[int(elem) for elem in list(attention_decoder)])
+                                   self_attention_decoder=[int(elem) for elem in list(attention_decoder)],
+                                   num_att_layers=num_att_layers)
+
     model.load_state_dict(torch.load(model_path, map_location=device))
     model = model.to(device)
 
@@ -139,7 +146,7 @@ if __name__ == "__main__":
     for i in range(num_imgs):
         x_0 = sample_from_VAE(model, N_dist)
         img = generate_images_from_VAE(x_0)
-        print(img)
-        '''wandb_logger.log_image(
-                "generated_renders", img, step=i
-            )'''
+        if log_wandb:
+            wandb_logger.log_image(
+                    "generated_renders", img, step=i
+                )

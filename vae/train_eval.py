@@ -1,5 +1,5 @@
 
-def train(model, iterator, optimizer, loss, device):
+def train(model, iterator, optimizer, loss, device, warmup):
     epoch_loss_val_mse = 0
     epoch_loss_val_kl = 0
     
@@ -13,7 +13,12 @@ def train(model, iterator, optimizer, loss, device):
         predictions = model(weights)
 
         loss_val_mse, loss_val_kl = loss(predictions, weights)
-        loss_val = loss_val_mse + loss_val_kl
+        # during warmup only train mse loss
+        if warmup:
+            loss_val = loss_val_mse
+        else:
+            loss_val = loss_val_mse + loss_val_kl
+            
         loss_val.backward()
         optimizer.step()
         epoch_loss_val_mse += loss_val_mse.item()
