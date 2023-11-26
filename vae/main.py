@@ -33,15 +33,21 @@ def main(cfg: DictConfig):
     Config.config = cfg
     cfg.filter_bad_path = '../' + cfg.filter_bad_path
     
-    output_dir = '/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/vae/output_files/'
+    output_dir = '/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/vae/output_files'
     attention_encoder = "0000"
     attention_decoder = attention_encoder[::-1]
     BS = 64
     SEED = 1234
-    N_EPOCHS = 20
-    learning_rate = 0.001
+    N_EPOCHS = 100
+    warmup_epochs = 10
+    
+    num_att_layers = 1
+    learning_rate = 0.0002
+    enc_chans = [64, 32, 16, 1]
+    enc_kernel_sizes = [8, 6, 3, 3]
     device = "auto"
-    lob_wandb = 1
+    lob_wandb = 0
+    variational = False # True to make VAE variational False to make it an AE
     if device == 'auto':
         if torch.cuda.is_available():
             device = torch.device('cuda')
@@ -50,17 +56,28 @@ def main(cfg: DictConfig):
         else:
             device = torch.device('cpu')
     
-    output_file = f'attention_{attention_encoder}_lr_{learning_rate}'
+    wandb_enc_channels = "_".join([str(enc) for enc in enc_chans])
+    wandb_enc_kernel_sizes = "_".join([str(enc) for enc in enc_kernel_sizes])
+
+    run_params_name = f'autoencoder_{attention_encoder}' #f'bn_lr{learning_rate}_E{attention_encoder}_num_att_layers{num_att_layers}_enc_chans{wandb_enc_channels}_enc_kernel_sizes{wandb_enc_kernel_sizes}_warmup_epochs{warmup_epochs}'
+
+    output_file = f'{run_params_name}_{SEED}'
     checkpoint_path = output_dir
     
     random.seed(SEED)
     np.random.seed(SEED)
 
+
     if lob_wandb:
-        wandb.init( project="VAE",
+        if variational:
+            project = "VAE"
+        else:
+            projcet = "AE"
+
+        wandb.init( project=projcet,
                     entity="adl-cv",
-                    name=f'first_test_lr{learning_rate}_E{attention_encoder}_D{attention_decoder}',
-                    group='conv_attention_vae',
+                    name=f'first_test_{run_params_name}',
+                    group=f'first_test',
                     config={
                     "learning_rate": learning_rate,
                     "batch_size": BS,
@@ -117,7 +134,7 @@ def main(cfg: DictConfig):
     )
 
     val_dl = DataLoader(
-        train_dt,
+        val_dt,
         batch_size=Config.get("batch_size"),
         shuffle=True,
         num_workers=1,
@@ -134,7 +151,7 @@ def main(cfg: DictConfig):
     )
 
     test_dl = DataLoader(
-        train_dt,
+        test_dt,
         batch_size=Config.get("batch_size"),
         shuffle=True,
         num_workers=1,
@@ -147,10 +164,12 @@ def main(cfg: DictConfig):
     model = VariationalAutoencoder(input_dim=36737,
                                    latent_dims=512,
                                    device=device,
-                                   enc_chans=[64, 32, 16, 1],
-                                   enc_kernal_sizes=[8, 6, 3, 3],
+                                   enc_chans=enc_chans,
+                                   enc_kernal_sizes=enc_kernel_sizes,
                                    self_attention_encoder=[int(elem) for elem in list(attention_encoder)],
-                                   self_attention_decoder=[int(elem) for elem in list(attention_decoder)])
+                                   self_attention_decoder=[int(elem) for elem in list(attention_decoder)],
+                                   num_att_layers=num_att_layers,
+                                   variational=variational)
     #device = 'cpu'
     #print(summary(model, (1, 36737), device="cpu"))
 
@@ -178,8 +197,8 @@ def main(cfg: DictConfig):
 
     for epoch in range(start_epoch, N_EPOCHS):
         start_time = time.time()
-        train_mse_loss, train_kl_loss = train(model, train_dl, optimizer, loss, device)
-        val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device)
+        train_mse_loss, train_kl_loss = train(model, train_dl, optimizer, loss, device, epoch <= warmup_epochs, variational=variational)
+        val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, variational=variational)
         end_time = time.time()
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
 
@@ -189,13 +208,13 @@ def main(cfg: DictConfig):
 
         if val_mse_loss+val_kl_loss < best_valid_loss:
             best_valid_loss = val_mse_loss+val_kl_loss
-            torch.save(model.state_dict(), f"{output_dir}/{output_file}{SEED}.pt")
+            torch.save(model.state_dict(), f"{output_dir}/{output_file}.pt")
 
         print(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s')
         print(f'\t Train MSE Loss: {train_mse_loss:.3f} Train KL Loss: {train_kl_loss:.3f}')
         print(f'\t Val. MSE Loss: {val_mse_loss:.3f} Val. KL Loss: {val_kl_loss:.3f}')
 
-        f = open(f"{output_dir}/{output_file}{SEED}.txt", "a")
+        f = open(f"{output_dir}/{output_file}.txt", "a")
         f.write(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s\n')
         f.write(f'\tTrain MSE Loss: {train_mse_loss:.3f} Train KL Loss: {train_kl_loss:.3f}\n')
         f.write(f'\tVal. MSE Loss: {val_mse_loss:.3f} Val. KL Loss: {val_kl_loss:.3f}\n')
@@ -211,14 +230,14 @@ def main(cfg: DictConfig):
                     }, checkpoint_path)'''
 
     # load the best model and test it on the test set
-    model.load_state_dict(torch.load(f"{output_dir}/{output_file}{SEED}.pt"))
-    test_mse_loss, test_kl_loss = evaluate(model, test_dl, loss, device)
+    model.load_state_dict(torch.load(f"{output_dir}/{output_file}.pt"))
+    test_mse_loss, test_kl_loss = evaluate(model, test_dl, loss, device, variational=variational)
 
     if lob_wandb:
         wandb.log({"test/mse_loss": test_mse_loss, "test/kl_loss":test_kl_loss})
 
     print(f'Test MSE Loss: {test_mse_loss:.3f} Test KL Loss: {test_kl_loss:.3f}')
-    f = open(f"{output_dir}/{output_file}{SEED}.txt", "a")
+    f = open(f"{output_dir}/{output_file}.txt", "a")
     f.write(f'Test MSE Loss: {test_mse_loss:.3f} Test KL Loss: {test_kl_loss:.3f}\n')
     f.close()
 

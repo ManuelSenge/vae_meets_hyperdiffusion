@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class Encoder(nn.Module):
-    def __init__(self, weight_dim, channels=1, enc_chans=[64, 32, 16, 1], latent_dim=512, act_fn=nn.ReLU(), enc_kernal_sizes=[8, 6, 3, 3], self_attention=[0,0,0,0], device=torch.device('cpu'), num_att_layers=4):
+    def __init__(self, weight_dim, channels=1, enc_chans=[64, 32, 16, 1], latent_dim=512, act_fn=nn.ReLU(), enc_kernal_sizes=[8, 6, 3, 3], self_attention=[0,0,0,0], device=torch.device('cpu'), num_att_layers=4, variational=True):
         super(Encoder, self).__init__()
         self.enc_chans = enc_chans
         self.dec_chans = list(reversed(self.enc_chans))
@@ -11,6 +11,7 @@ class Encoder(nn.Module):
         self.weight_dim = weight_dim
         self.self_attention = self_attention
         self.device = device
+        self.variational = variational
         dims = [36737, 18366, 9182, 4591, 2296]
         nheads = [1, 1, 2, 1, 1]
         
@@ -42,14 +43,17 @@ class Encoder(nn.Module):
         linear_input_dim = 2296
         # latend space parameters
         self.mu_network = nn.Linear(linear_input_dim, latent_dim)
-        self.sigma_network = nn.Linear(linear_input_dim, latent_dim)
         self.transformer_encoder = nn.ModuleList(self.transformer_encoder)
 
-        # sampling
-        self.N = torch.distributions.Normal(0, 1)
-        self.N.loc = self.N.loc.to(device) # hack to get sampling on the GPU
-        self.N.scale = self.N.scale.to(device)
-        self.kl = 0
+
+        if variational:
+            self.sigma_network = nn.Linear(linear_input_dim, latent_dim)
+            
+            # sampling
+            self.N = torch.distributions.Normal(0, 1)
+            self.N.loc = self.N.loc.to(device) # hack to get sampling on the GPU
+            self.N.scale = self.N.scale.to(device)
+            self.kl = 0
 
     def forward(self, x):
         output = x.view(-1, 1, self.weight_dim) # add one channel
@@ -68,6 +72,9 @@ class Encoder(nn.Module):
         
 
         mu =  self.mu_network(output)
+        if not self.variational:
+            return mu
+
         sigma = torch.exp(self.sigma_network(output))
         z = mu + sigma*self.N.sample(mu.shape)
         self.kl = (sigma**2 + mu**2 - torch.log(sigma) - 1/2).sum()
@@ -138,9 +145,9 @@ class Decoder(nn.Module):
 
 
 class VariationalAutoencoder(nn.Module):
-    def __init__(self, input_dim, latent_dims, device, enc_chans=[64, 32, 16, 1], enc_kernal_sizes=[8, 6, 3, 3], self_attention_encoder=[0,0,0,0], self_attention_decoder=[0,0,0,0], num_att_layers=4):
+    def __init__(self, input_dim, latent_dims, device, enc_chans=[64, 32, 16, 1], enc_kernal_sizes=[8, 6, 3, 3], self_attention_encoder=[0,0,0,0], self_attention_decoder=[0,0,0,0], num_att_layers=4,variational=True):
         super(VariationalAutoencoder, self).__init__(), 
-        self.encoder = Encoder(latent_dim=latent_dims, weight_dim=input_dim, enc_chans=enc_chans, enc_kernal_sizes=enc_kernal_sizes, device=device, self_attention=self_attention_encoder, num_att_layers=num_att_layers)
+        self.encoder = Encoder(latent_dim=latent_dims, weight_dim=input_dim, enc_chans=enc_chans, enc_kernal_sizes=enc_kernal_sizes, device=device, self_attention=self_attention_encoder, num_att_layers=num_att_layers, variational=variational)
         self.decoder = Decoder(latent_dim=latent_dims, weight_dim=input_dim, enc_kernal_sizes=enc_kernal_sizes, enc_chans=enc_chans, device=device, self_attention=self_attention_decoder, num_att_layers=num_att_layers)
 
     def forward(self, x):

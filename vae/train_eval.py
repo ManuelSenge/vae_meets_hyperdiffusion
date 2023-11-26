@@ -1,5 +1,5 @@
 
-def train(model, iterator, optimizer, loss, device, warmup):
+def train(model, iterator, optimizer, loss, device, warmup, variational):
     epoch_loss_val_mse = 0
     epoch_loss_val_kl = 0
     
@@ -12,22 +12,23 @@ def train(model, iterator, optimizer, loss, device, warmup):
 
         predictions = model(weights)
 
-        loss_val_mse, loss_val_kl = loss(predictions, weights)
+        loss_val_mse, loss_val_kl = loss(predictions, weights, variational)
         # during warmup only train mse loss
-        if warmup:
+        if warmup or not variational:
             loss_val = loss_val_mse
         else:
             loss_val = loss_val_mse + loss_val_kl
             
         loss_val.backward()
         optimizer.step()
+        
         epoch_loss_val_mse += loss_val_mse.item()
         epoch_loss_val_kl += loss_val_kl.item()
             
 
     return epoch_loss_val_mse / len(iterator), epoch_loss_val_kl / len(iterator)
 
-def evaluate(model, iterator, loss, device):
+def evaluate(model, iterator, loss, device, variational):
     epoch_loss_val_mse = 0
     epoch_loss_val_kl = 0
     
@@ -39,8 +40,11 @@ def evaluate(model, iterator, loss, device):
 
         predictions = model(weights)
 
-        loss_val_mse, loss_val_kl = loss(predictions, weights)
-        loss_val = loss_val_mse + loss_val_kl
+        loss_val_mse, loss_val_kl = loss(predictions, weights, variational)
+        if not variational:
+            loss_val = loss_val_mse
+        else:
+            loss_val = loss_val_mse + loss_val_kl
   
         epoch_loss_val_mse += loss_val_mse.item()
         epoch_loss_val_kl += loss_val_kl.item()
