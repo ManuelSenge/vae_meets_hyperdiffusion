@@ -3,6 +3,7 @@ calculate_metric_on_test: False
 dedup: False
 test_sample_mult: 1.1
 filter_bad: True
+variational: False
 filter_bad_path: ../data/plane_problematic_shapes.txt
 use_wandb: True
 dataset_dir: ../data
@@ -12,7 +13,13 @@ mlps_folder_train: ../mlp_weights/3d_128_plane_multires_4_manifoldplus_slower_no
 sampling: ddim
 lr: 0.0002
 batch_size: 32
-epochs: 80
+epochs: 300
+beta: 1
+warmup_epochs: 3
+annealing: False
+cycle_linear:
+  n_cycle: 4
+  ratio: 0.5
 attention_layers_encoder: [False, False, True, True]
 enc_chans: [64, 32, 16, 1]
 enc_kernel_sizes: [8, 6, 3, 3]
@@ -37,3 +44,11 @@ mlp_config:
     multires: 4
     use_leaky_relu: False
     move: False
+transformer_config:
+  params:
+    n_embd: 2880
+    n_layer: 12
+    n_head: 16
+    split_policy: layer_by_layer
+    use_global_residual: False
+    condition: 'no'
