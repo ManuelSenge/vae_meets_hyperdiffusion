@@ -34,7 +34,7 @@ def main(cfg: DictConfig):
     Config.config = cfg
     cfg.filter_bad_path = '../' + cfg.filter_bad_path
     
-    output_dir = '/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/vae/output_files'
+    output_dir = '/hyperdiffusion/output_files'
     attention_encoder = "0000"
     attention_decoder = attention_encoder[::-1]
     BS = 64
@@ -42,13 +42,14 @@ def main(cfg: DictConfig):
     N_EPOCHS = 100
     warmup_epochs = 10
     
+    variational = False
+
     num_att_layers = 1
     learning_rate = 0.0002
     enc_chans = [64, 32, 16, 1]
     enc_kernel_sizes = [8, 6, 3, 3]
     device = "auto"
     lob_wandb = 0
-    variational = False # True to make VAE variational False to make it an AE
     if device == 'auto':
         if torch.cuda.is_available():
             device = torch.device('cuda')
@@ -60,7 +61,7 @@ def main(cfg: DictConfig):
     wandb_enc_channels = "_".join([str(enc) for enc in enc_chans])
     wandb_enc_kernel_sizes = "_".join([str(enc) for enc in enc_kernel_sizes])
 
-    run_params_name = f'autoencoder_{attention_encoder}' #f'bn_lr{learning_rate}_E{attention_encoder}_num_att_layers{num_att_layers}_enc_chans{wandb_enc_channels}_enc_kernel_sizes{wandb_enc_kernel_sizes}_warmup_epochs{warmup_epochs}'
+    run_params_name = f'unet_no_attention' #f'bn_lr{learning_rate}_E{attention_encoder}_num_att_layers{num_att_layers}_enc_chans{wandb_enc_channels}_enc_kernel_sizes{wandb_enc_kernel_sizes}_warmup_epochs{warmup_epochs}'
 
     output_file = f'{run_params_name}_{SEED}'
     checkpoint_path = output_dir
@@ -70,12 +71,9 @@ def main(cfg: DictConfig):
 
 
     if lob_wandb:
-        if variational:
-            project = "VAE"
-        else:
-            projcet = "AE"
+        project = "UNet"
 
-        wandb.init( project=projcet,
+        wandb.init( project=project,
                     entity="adl-cv",
                     name=f'first_test_{run_params_name}',
                     group=f'first_test',
@@ -132,6 +130,7 @@ def main(cfg: DictConfig):
         mlp_kwargs,
         cfg,
         val_object_names,
+        
     )
 
     val_dl = DataLoader(
@@ -140,6 +139,7 @@ def main(cfg: DictConfig):
         shuffle=True,
         num_workers=1,
         pin_memory=True,
+        # drop_last=True
     )
 
     test_dt = WeightDataset(
@@ -157,19 +157,20 @@ def main(cfg: DictConfig):
         shuffle=True,
         num_workers=1,
         pin_memory=True,
+        drop_last=True
     )
 
     # create model loss and optimizer
     #model = VariationalAutoencoder(latent_dims=512, device=device)
     print('create model..')
-    model = UNetModel(image_size=36737, 
+    model = UNetModel(image_size=36744, 
                     in_channels=1, 
                     model_channels=1, 
                     out_channels=1, 
                     num_res_blocks=3,
-                    attention_resolutions=[4,2,1],
+                    attention_resolutions=[],
                     dropout=0.0,
-                    channel_mult=[1,2,4],
+                    channel_mult=[1,2,4,8],
                     num_heads=1,
                     dims=1,
                     num_head_channels=-1)
@@ -212,6 +213,9 @@ def main(cfg: DictConfig):
         if val_mse_loss+val_kl_loss < best_valid_loss:
             best_valid_loss = val_mse_loss+val_kl_loss
             torch.save(model.state_dict(), f"{output_dir}/{output_file}.pt")
+
+            if lob_wandb:
+                wandb.save(f"{output_dir}/{output_file}.pt")
 
         print(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s')
         print(f'\t Train MSE Loss: {train_mse_loss:.3f} Train KL Loss: {train_kl_loss:.3f}')

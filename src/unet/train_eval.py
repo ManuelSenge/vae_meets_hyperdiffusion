@@ -1,4 +1,6 @@
 
+import torch
+
 def train(model, iterator, optimizer, loss, device, warmup, variational):
     epoch_loss_val_mse = 0
     epoch_loss_val_kl = 0
@@ -7,10 +9,11 @@ def train(model, iterator, optimizer, loss, device, warmup, variational):
     for i, batch in enumerate(iterator): # batch is simply a batch of ci-matricies as a tensor as x and y are the same 
         # attention_mask, base_ids are already on device
         weights, weights_prev, weights_prev = batch
-        weights = weights.to(device)
+        weights = torch.nn.functional.pad(weights, (3, 4)).to(device)
         optimizer.zero_grad() # clear gradients first
 
         predictions = model(weights)
+        # print(predictions)
 
         loss_val_mse, loss_val_kl = loss(predictions, weights, variational)
         # during warmup only train mse loss
@@ -18,7 +21,7 @@ def train(model, iterator, optimizer, loss, device, warmup, variational):
             loss_val = loss_val_mse
         else:
             loss_val = loss_val_mse + loss_val_kl
-        print(loss_val.item())
+        # print(loss_val.item())
         loss_val.backward()
         optimizer.step()
         
@@ -36,7 +39,7 @@ def evaluate(model, iterator, loss, device, variational):
     for i, batch in enumerate(iterator): # batch is simply a batch of ci-matricies as a tensor as x and y are the same 
         # attention_mask, base_ids are already on device
         weights, weights_prev, weights_prev = batch
-        weights = weights.to(device)
+        weights = torch.nn.functional.pad(weights, (3, 4)).to(device)
 
         predictions = model(weights)
 

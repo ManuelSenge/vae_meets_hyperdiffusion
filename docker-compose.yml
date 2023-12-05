@@ -15,6 +15,7 @@ services:
       - ./vols/gen_meshes:/hyperdiffusion/gen_meshes
       - ./src/configs:/hyperdiffusion/configs
       - ./src/vae:/hyperdiffusion/vae
+      - ./src/unet:/hyperdiffusion/unet
     deploy:
       resources:
         reservations:
