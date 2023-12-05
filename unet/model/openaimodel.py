@@ -840,7 +840,7 @@ class EncoderUNetModel(nn.Module):
 
         self.input_blocks = nn.ModuleList(
             [
-                TimestepEmbedSequential(
+                nn.Sequential( # TimestepEmbedSequential
                     conv_nd(dims, in_channels, model_channels, 3, padding=1)
                 )
             ]
@@ -873,13 +873,13 @@ class EncoderUNetModel(nn.Module):
                             use_new_attention_order=use_new_attention_order,
                         )
                     )
-                self.input_blocks.append(TimestepEmbedSequential(*layers))
+                self.input_blocks.append(nn.Sequential(*layers)) # TimestepEmbedSequential
                 self._feature_size += ch
                 input_block_chans.append(ch)
             if level != len(channel_mult) - 1:
                 out_ch = ch
                 self.input_blocks.append(
-                    TimestepEmbedSequential(
+                    nn.Sequential( #TimestepEmbedSequential
                         ResBlock(
                             ch,
                             time_embed_dim,
@@ -901,7 +901,7 @@ class EncoderUNetModel(nn.Module):
                 ds *= 2
                 self._feature_size += ch
 
-        self.middle_block = TimestepEmbedSequential(
+        self.middle_block = nn.Sequential( #TimestepEmbedSequential
             ResBlock(
                 ch,
                 time_embed_dim,
