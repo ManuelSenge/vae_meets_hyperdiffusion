@@ -16,10 +16,12 @@ import numpy as np
 import sys
 sys.path.append('../')
 from dataset import WeightDataset
+from sampler import SingleInstanceBatchSampler
 from hd_utils import Config
 from omegaconf import DictConfig
 import hydra
 from torchsummary import summary
+import datetime
 
 # need this seed for the lookup (as data is randomly shuffled)
 random.seed(1234)
@@ -37,19 +39,22 @@ def main(cfg: DictConfig):
     output_dir = '/hyperdiffusion/output_files'
     attention_encoder = "0000"
     attention_decoder = attention_encoder[::-1]
-    BS = 64
+    BS = 32
     SEED = 1234
-    N_EPOCHS = 100
+    N_EPOCHS = 500
     warmup_epochs = 10
     
     variational = False
 
-    num_att_layers = 1
     learning_rate = 0.0002
-    enc_chans = [64, 32, 16, 1]
-    enc_kernel_sizes = [8, 6, 3, 3]
+    attention_resolutions  = []
+    dropout = 0.0
+    num_res_blocks = 3
+    channel_mult = [1, 2, 4, 8]
+    single_sample_overfit = True
+
     device = "auto"
-    lob_wandb = 0
+    lob_wandb = 1
     if device == 'auto':
         if torch.cuda.is_available():
             device = torch.device('cuda')
@@ -57,11 +62,13 @@ def main(cfg: DictConfig):
             device = torch.device('mps')
         else:
             device = torch.device('cpu')
-    
-    wandb_enc_channels = "_".join([str(enc) for enc in enc_chans])
-    wandb_enc_kernel_sizes = "_".join([str(enc) for enc in enc_kernel_sizes])
 
-    run_params_name = f'unet_no_attention' #f'bn_lr{learning_rate}_E{attention_encoder}_num_att_layers{num_att_layers}_enc_chans{wandb_enc_channels}_enc_kernel_sizes{wandb_enc_kernel_sizes}_warmup_epochs{warmup_epochs}'
+
+    date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    run_params_name = f'{date_str}_unet_4593__lr_{learning_rate}_attention_res_{str(attention_resolutions)}_dropout_{dropout}' #f'bn_lr{learning_rate}_E{attention_encoder}_num_att_layers{num_att_layers}_enc_chans{wandb_enc_channels}_enc_kernel_sizes{wandb_enc_kernel_sizes}_warmup_epochs{warmup_epochs}'
+
+    if single_sample_overfit:
+        run_params_name = 'single_sample_overfit_' + run_params_name
 
     output_file = f'{run_params_name}_{SEED}'
     checkpoint_path = output_dir
@@ -69,6 +76,7 @@ def main(cfg: DictConfig):
     random.seed(SEED)
     np.random.seed(SEED)
 
+    
 
     if lob_wandb:
         project = "UNet"
@@ -78,10 +86,16 @@ def main(cfg: DictConfig):
                     name=f'first_test_{run_params_name}',
                     group=f'first_test',
                     config={
+                    "latent_attention": True,
+                    "attention_resolutions": attention_resolutions,
+                    "dropout": dropout,
                     "learning_rate": learning_rate,
+                    "num_res_blocks":  num_res_blocks,
                     "batch_size": BS,
                     "SEED": SEED,
                     "epochs": N_EPOCHS,
+                    "channel_mult": channel_mult,
+                    "single_sample_overfit": single_sample_overfit,
                     })
 
     dataset_path = os.path.join('..', Config.config["dataset_dir"], Config.config["dataset"])
@@ -104,6 +118,7 @@ def main(cfg: DictConfig):
     test_object_names = set([str.split(".")[0] for str in test_object_names])
  
 
+
     # create dataset and dataloader
     print('create dataset...')
     train_dt = WeightDataset(
@@ -115,13 +130,25 @@ def main(cfg: DictConfig):
         train_object_names,
     )
 
-    train_dl = DataLoader(
-        train_dt,
-        batch_size=Config.get("batch_size"),
-        shuffle=True,
-        num_workers=1,
-        pin_memory=True,
-    )
+    train_dl = None
+    if single_sample_overfit:
+        train_dl = DataLoader(
+            train_dt,
+            sampler = SingleInstanceBatchSampler(len(train_dt)),
+            batch_size=BS,
+            num_workers=1,
+            pin_memory=True
+        )
+    else: 
+        train_dl = DataLoader(
+            train_dt,
+            batch_size=Config.get("batch_size"),
+            shuffle=True,
+            num_workers=1,
+            pin_memory=True,
+        )
+
+    assert train_dl is not None
 
     val_dt = WeightDataset(
         mlps_folder_train,
@@ -167,10 +194,10 @@ def main(cfg: DictConfig):
                     in_channels=1, 
                     model_channels=1, 
                     out_channels=1, 
-                    num_res_blocks=3,
-                    attention_resolutions=[],
-                    dropout=0.0,
-                    channel_mult=[1,2,4,8],
+                    num_res_blocks=num_res_blocks,
+                    attention_resolutions=attention_resolutions,
+                    dropout=dropout,
+                    channel_mult=channel_mult,
                     num_heads=1,
                     dims=1,
                     num_head_channels=-1)
