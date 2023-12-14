@@ -1,7 +1,5 @@
-from model.openaimodel import UNetModel
-
-#from model_linear import VariationalAutoencoder
-from loss import VAELoss
+from model.ldm.modules.autoencoder import AutoencoderKL
+from omegaconf import OmegaConf
 import torch.nn as nn
 import torch
 from torch.utils.data import DataLoader
@@ -20,6 +18,7 @@ from hd_utils import Config
 from omegaconf import DictConfig
 import hydra
 from torchsummary import summary
+from model.ldm.modules.autoencoder import AutoencoderKL
 
 # need this seed for the lookup (as data is randomly shuffled)
 random.seed(1234)
@@ -34,7 +33,7 @@ def main(cfg: DictConfig):
     Config.config = cfg
     cfg.filter_bad_path = '../' + cfg.filter_bad_path
     
-    output_dir = '/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/vae/output_files'
+    output_dir = '/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/unet/output_file'
     attention_encoder = "0000"
     attention_decoder = attention_encoder[::-1]
     BS = 64
@@ -70,12 +69,9 @@ def main(cfg: DictConfig):
 
 
     if lob_wandb:
-        if variational:
-            project = "VAE"
-        else:
-            projcet = "AE"
+        project = "unet"
 
-        wandb.init( project=projcet,
+        wandb.init( project=project,
                     entity="adl-cv",
                     name=f'first_test_{run_params_name}',
                     group=f'first_test',
@@ -162,24 +158,19 @@ def main(cfg: DictConfig):
     # create model loss and optimizer
     #model = VariationalAutoencoder(latent_dims=512, device=device)
     print('create model..')
-    model = UNetModel(image_size=36737, 
-                    in_channels=1, 
-                    model_channels=1, 
-                    out_channels=1, 
-                    num_res_blocks=3,
-                    attention_resolutions=[4,2,1],
-                    dropout=0.0,
-                    channel_mult=[1,2,4],
-                    num_heads=1,
-                    dims=1,
-                    num_head_channels=-1)
-    #device = 'cpu'
-    #print(summary(model, (1, 36737), device="cpu"))
+    config_model = OmegaConf.load('/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/our_LDM_Autoencoder/model/autoencoder_kl_8x8x64.yaml')
+    loss_config = config_model.model.params.lossconfig
+    ddconfig = config_model.model.params.ddconfig
+    model = AutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=512)
+    loss = model.loss
+
+    device = 'cpu'
+    print(summary(model, (1, 36744), device="cpu"))
+    1/0
 
     model = model.to(device)
     print(f'model created..')
 
-    loss = VAELoss(model)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     # load checkpoint if necessary
@@ -212,6 +203,8 @@ def main(cfg: DictConfig):
         if val_mse_loss+val_kl_loss < best_valid_loss:
             best_valid_loss = val_mse_loss+val_kl_loss
             torch.save(model.state_dict(), f"{output_dir}/{output_file}.pt")
+            if lob_wandb:
+                wandb.save(f"{output_dir}/{output_file}.pt")
 
         print(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s')
         print(f'\t Train MSE Loss: {train_mse_loss:.3f} Train KL Loss: {train_kl_loss:.3f}')

@@ -747,10 +747,10 @@ class UNetModel(nn.Module):
         :param y: an [N] Tensor of labels, if class-conditional.
         :return: an [N x C x ...] Tensor of outputs.
         """
-        x = x.view((x.shape[0],1, x.shape[1])) # num_groups, BS, data dim
-        print('x', x.shape)
-        x = self.dim_red(x)
-        print('x', x.shape)
+        x = x.view((x.shape[0], 1, x.shape[1])) # num_groups, BS, data dim
+        # print('x', x.shape)
+        # x = self.dim_red(x)
+        # print('x', x.shape)
         assert (y is not None) == (
             self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional"
@@ -766,20 +766,23 @@ class UNetModel(nn.Module):
         for module in self.input_blocks:
             h = module(h) #emb, context
             hs.append(h)
-        print('h', h.shape)
+            # print('h', h.shape)
         h = self.middle_block(h) #emb, context
-        print('h', h.shape)
+        # print('h', h.shape)
         for module in self.output_blocks:
-            print('h', h[0].shape, 'hs', hs[0].shape)
+            # print('h', h[0].shape, 'hs', hs[0].shape)
             h = th.cat([h, hs.pop()], dim=1)
             h = module(h) #emb, context
         h = h.type(x.dtype)
         if self.predict_codebook_ids:
-            print(self.id_predictor(h).shape)
-            return self.dim_up(self.id_predictor(h))
+            # print(self.id_predictor(h).shape)
+            return self.id_predictor(h)
+            # TODO: return self.dim_up(self.id_predictor(h))
         else:
-            print(self.out(h).shape)
-            return self.dim_up(self.out(h))
+            # print(self.out(h).shape)
+            
+            return self.out(h)
+            # TODO: return self.dim_up(self.out(h))
 
 
 class EncoderUNetModel(nn.Module):
@@ -840,7 +843,7 @@ class EncoderUNetModel(nn.Module):
 
         self.input_blocks = nn.ModuleList(
             [
-                nn.Sequential( # TimestepEmbedSequential
+                nn.Sequential(
                     conv_nd(dims, in_channels, model_channels, 3, padding=1)
                 )
             ]
@@ -873,13 +876,13 @@ class EncoderUNetModel(nn.Module):
                             use_new_attention_order=use_new_attention_order,
                         )
                     )
-                self.input_blocks.append(nn.Sequential(*layers)) # TimestepEmbedSequential
+                self.input_blocks.append(nn.Sequential(*layers))
                 self._feature_size += ch
                 input_block_chans.append(ch)
             if level != len(channel_mult) - 1:
                 out_ch = ch
                 self.input_blocks.append(
-                    nn.Sequential( #TimestepEmbedSequential
+                    nn.Sequential(
                         ResBlock(
                             ch,
                             time_embed_dim,
@@ -901,7 +904,7 @@ class EncoderUNetModel(nn.Module):
                 ds *= 2
                 self._feature_size += ch
 
-        self.middle_block = nn.Sequential( #TimestepEmbedSequential
+        self.middle_block = nn.Sequential(
             ResBlock(
                 ch,
                 time_embed_dim,
@@ -998,4 +1001,3 @@ class EncoderUNetModel(nn.Module):
         else:
             h = h.type(x.dtype)
             return self.out(h)
-

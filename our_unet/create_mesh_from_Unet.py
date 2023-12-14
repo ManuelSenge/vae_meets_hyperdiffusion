@@ -4,15 +4,20 @@ import os
 import copy
 import wandb
 from pytorch_lightning.loggers import WandbLogger
-
+import numpy as np
+import hydra
+from model.openaimodel import UNetModel
 import sys
 sys.path.append('../')
 import tqdm
 from hd_utils import generate_mlp_from_weights, render_mesh
-from model_transformer_conv import VariationalAutoencoder
 from siren import sdf_meshing
 from siren.experiment_scripts.test_sdf import SDFDecoder
 from omegaconf import OmegaConf
+from torch.utils.data import DataLoader
+from dataset import WeightDataset
+from hd_utils import Config
+from omegaconf import DictConfig
 
 '''
     model_type: mlp_3d
@@ -39,7 +44,7 @@ mlp_kwargs = OmegaConf.create({'model_type':'mlp_3d', 'out_size':1, 'hidden_neur
     'use_leaky_relu':False, 'move':False, 'device':'mps'})
 
 i = 0
-mesh_dir = "gen_meshes/VAE"
+mesh_dir = "gen_meshes/UNet"
 
 def generate_meshes(x_0s, folder_name="meshes", info="0", res=64, level=0):
         x_0s = x_0s.view(len(x_0s), -1)
@@ -87,11 +92,11 @@ def generate_meshes(x_0s, folder_name="meshes", info="0", res=64, level=0):
 def generate_images_from_VAE(x_0):
     out_imgs = []
     if not os.path.isdir(mesh_dir):
-        os.makedirs(f"gen_meshes/VAE")
+        os.makedirs(f"gen_meshes/UNet")
     mesh, _ = generate_meshes(x_0.unsqueeze(0), None, res=700)
     mesh = mesh[0]
     mesh.vertices *= 2
-    mesh.export(f"gen_meshes/VAE/mesh_{len(out_imgs)}.obj")
+    mesh.export(f"gen_meshes/UNet/mesh_{len(out_imgs)}.obj")
 
     # Scaling the chairs down so that they fit in the camera
     #if cfg.dataset == "03001627":
@@ -100,53 +105,91 @@ def generate_images_from_VAE(x_0):
     out_imgs.append(img)
     return out_imgs
 
-def sample_from_VAE(model, N_dist):
-    sample = N_dist.sample((1, 512))
-    sample = sample.view((sample.shape[0], 1, sample.shape[1]))
-    return model.decoder(sample)
 
-if __name__ == "__main__":
-    num_imgs = 1
-    model_path = '/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/vae/output_files/bn_lr0.0002_E0011_num_att_layers1_enc_chans128_64_32_1_enc_kernel_sizes8_6_3_3_1234.pt'
-    attention_encoder = "0011"
-    attention_decoder = attention_encoder[::-1]
+@hydra.main(
+    version_base=None,
+    config_path="../configs/diffusion_configs",
+    config_name="train_plane",
+)
+def main(cfg: DictConfig):
+    Config.config = cfg
+    cfg.filter_bad_path = '../' + cfg.filter_bad_path
+    num_imgs = 3
+    model_path = '/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/unet/model/models/single_sample_overfit_2023-12-07_unet_4593__lr_0.0002_attention_res_[]_dropout_0.0_1234.pt'
     log_wandb = 1
-    num_att_layers = 1
-    enc_chans = [128, 64, 32, 1]
-    enc_kernel_sizes = [8, 6, 3, 3]
-
-    if log_wandb:
-        wandb.init(
-                entity='adl-cv',
-                project="VAE eval",
-                name="batch_norm_0011_128_filter",
-                config={'attention_encoder': attention_encoder, 'num_imgs':num_imgs},
-            )
-
-        wandb_logger = WandbLogger()
-
-
     
-    model = VariationalAutoencoder(input_dim=36737,
-                                   latent_dims=512,
-                                   device=device,
-                                   enc_chans=enc_chans,
-                                   enc_kernal_sizes=enc_kernel_sizes,
-                                   self_attention_encoder=[int(elem) for elem in list(attention_encoder)],
-                                   self_attention_decoder=[int(elem) for elem in list(attention_decoder)],
-                                   num_att_layers=num_att_layers)
+    model = UNetModel(image_size=36744, 
+                    in_channels=1, 
+                    model_channels=1, 
+                    out_channels=1, 
+                    num_res_blocks=3,
+                    attention_resolutions=[],
+                    dropout=0.0,
+                    channel_mult=[1,2,4,8],
+                    num_heads=1,
+                    dims=1,
+                    num_head_channels=-1)
 
     model.load_state_dict(torch.load(model_path, map_location=device))
     model = model.to(device)
 
-    N_dist = torch.distributions.Normal(0, 1)
-    N_dist.loc = N_dist.loc.to(device) # hack to get sampling on the GPU
-    N_dist.scale = N_dist.scale.to(device)
+    dataset_path = os.path.join('..', Config.config["dataset_dir"], Config.config["dataset"])
+    test_object_names = np.genfromtxt(
+        os.path.join(dataset_path, "test_split.lst"), dtype="str"
+    )
+    test_object_names = set([str.split(".")[0] for str in test_object_names])
+    mlps_folder_train = '../' + Config.get("mlps_folder_train")
 
-    for i in range(num_imgs):
-        x_0 = sample_from_VAE(model, N_dist)
-        img = generate_images_from_VAE(x_0)
+    test_dt = WeightDataset(
+        mlps_folder_train,
+        None,
+        0,
+        mlp_kwargs,
+        cfg,
+        test_object_names,
+    )
+
+    test_dl = DataLoader(
+        test_dt,
+        batch_size=1,
+        shuffle=False,
+        num_workers=1,
+        pin_memory=True,
+    )
+
+    count = 0 
+
+    if log_wandb:
+        wandb.init(
+                entity='adl-cv',
+                project="UNet eval",
+                name=f"single sample overfitt",
+                #config={'attention_encoder': attention_encoder, 'num_imgs':num_imgs},
+            )
+
+        wandb_logger = WandbLogger()
+        
+    while count < num_imgs:
+        sample, _, _ = test_dt.__getitem__(count)
+        sample = sample.to(device)
+        sample_padded = torch.nn.functional.pad(sample.view((1, -1)), (3, 4)).to(device)
+        enc_sample = model(sample_padded)
+        enc_sample = enc_sample.view((-1,))
+        enc_sample = enc_sample[2:-5]
+        true_img = generate_images_from_VAE(sample)
+        print('true_img')
+        pred_img = generate_images_from_VAE(enc_sample)
+        print('pred_img')
         if log_wandb:
             wandb_logger.log_image(
-                    "generated_renders", img, step=i
+                    "true_renders", true_img, step=count
                 )
+            wandb_logger.log_image(
+                    "generated_renders", pred_img, step=count
+                )
+        count += 1
+
+
+
+if __name__ == "__main__":
+    main()

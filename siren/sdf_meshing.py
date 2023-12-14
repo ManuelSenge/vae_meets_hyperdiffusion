@@ -197,6 +197,7 @@ def create_mesh(
                     torch.ones((sample_subset.shape[0], 1)).to(device) * time_val,
                 )
             )
+        prediction = decoder(sample_subset).squeeze().detach().cpu()
         samples[head : min(head + max_batch, num_samples), 3] = (
             decoder(sample_subset).squeeze().detach().cpu()  # .squeeze(1)
         )
