@@ -9,7 +9,7 @@ def train(model, iterator, optimizer, loss, device, warmup, variational):
     for i, batch in enumerate(iterator): # batch is simply a batch of ci-matricies as a tensor as x and y are the same 
         # attention_mask, base_ids are already on device
         weights, weights_prev, weights_prev = batch
-        weights = torch.nn.functional.pad(weights, (3, 4)).to(device)
+        weights = torch.nn.functional.pad(weights, (0, 31)).to(device)
         optimizer.zero_grad() # clear gradients first
 
         predictions = model(weights)
@@ -39,7 +39,7 @@ def evaluate(model, iterator, loss, device, variational):
     for i, batch in enumerate(iterator): # batch is simply a batch of ci-matricies as a tensor as x and y are the same 
         # attention_mask, base_ids are already on device
         weights, weights_prev, weights_prev = batch
-        weights = torch.nn.functional.pad(weights, (3, 4)).to(device)
+        weights = torch.nn.functional.pad(weights, (0, 31)).to(device)
 
         predictions = model(weights)
 

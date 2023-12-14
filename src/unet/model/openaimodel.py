@@ -587,6 +587,7 @@ class UNetModel(nn.Module):
                 input_block_chans.append(ch)
                 ds *= 2
                 self._feature_size += ch
+            
 
         if num_head_channels == -1:
             dim_head = ch // num_heads
@@ -642,6 +643,7 @@ class UNetModel(nn.Module):
                 ]
                 ch = model_channels * mult
                 if ds in attention_resolutions:
+                    # print(f"Attention at level: {level}. ({ds}, {attention_resolutions})")
                     if num_head_channels == -1:
                         dim_head = ch // num_heads
                     else:

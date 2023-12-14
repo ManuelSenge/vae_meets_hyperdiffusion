@@ -44,14 +44,17 @@ def main(cfg: DictConfig):
     N_EPOCHS = 500
     warmup_epochs = 10
     
-    variational = False
+    adam_betas=(0.8, 0.99)
 
+    variational = False
+    normalize = True
     learning_rate = 0.0002
-    attention_resolutions  = []
-    dropout = 0.0
+    attention_resolutions  = [8, 16]
+    # attention_resolutions  = []
+    dropout = 0.2
     num_res_blocks = 3
-    channel_mult = [1, 2, 4, 8]
-    single_sample_overfit = True
+    channel_mult = [1, 4, 8, 16, 32]
+    single_sample_overfit = False
 
     device = "auto"
     lob_wandb = 1
@@ -65,7 +68,7 @@ def main(cfg: DictConfig):
 
 
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
-    run_params_name = f'{date_str}_unet_4593__lr_{learning_rate}_attention_res_{str(attention_resolutions)}_dropout_{dropout}' #f'bn_lr{learning_rate}_E{attention_encoder}_num_att_layers{num_att_layers}_enc_chans{wandb_enc_channels}_enc_kernel_sizes{wandb_enc_kernel_sizes}_warmup_epochs{warmup_epochs}'
+    run_params_name = f'{date_str}_unet_2298__lr_{learning_rate}_attention_res_{str(attention_resolutions)}_dropout_{dropout}' #f'bn_lr{learning_rate}_E{attention_encoder}_num_att_layers{num_att_layers}_enc_chans{wandb_enc_channels}_enc_kernel_sizes{wandb_enc_kernel_sizes}_warmup_epochs{warmup_epochs}'
 
     if single_sample_overfit:
         run_params_name = 'single_sample_overfit_' + run_params_name
@@ -96,6 +99,8 @@ def main(cfg: DictConfig):
                     "epochs": N_EPOCHS,
                     "channel_mult": channel_mult,
                     "single_sample_overfit": single_sample_overfit,
+                    "adam_betas": adam_betas,
+                    "normalize": normalize
                     })
 
     dataset_path = os.path.join('..', Config.config["dataset_dir"], Config.config["dataset"])
@@ -117,7 +122,23 @@ def main(cfg: DictConfig):
     )
     test_object_names = set([str.split(".")[0] for str in test_object_names])
  
+    oai_coeff = None
+    if normalize:
+        oai_coeff_dataset = WeightDataset(
+            mlps_folder_train,
+            None, 
+            0,
+            mlp_kwargs,
+            cfg=cfg
+        )
 
+        nets = [oai_coeff_dataset[i][0] for i in range(len(oai_coeff_dataset.mlp_files))]
+        
+        stdev = torch.stack(nets).flatten().std(unbiased=True).item()
+        oai_coeff = 0.538 / stdev # openai coefficient according to G.pt
+
+    normalizing_constant = oai_coeff if oai_coeff else 1
+    print("OAI-Coeff Normalization: ", normalizing_constant)
 
     # create dataset and dataloader
     print('create dataset...')
@@ -128,6 +149,7 @@ def main(cfg: DictConfig):
         mlp_kwargs,
         cfg,
         train_object_names,
+        normalize=normalizing_constant
     )
 
     train_dl = None
@@ -157,7 +179,7 @@ def main(cfg: DictConfig):
         mlp_kwargs,
         cfg,
         val_object_names,
-        
+        normalize=normalizing_constant
     )
 
     val_dl = DataLoader(
@@ -176,6 +198,7 @@ def main(cfg: DictConfig):
         mlp_kwargs,
         cfg,
         test_object_names,
+        normalize=normalizing_constant
     )
 
     test_dl = DataLoader(
@@ -208,10 +231,10 @@ def main(cfg: DictConfig):
     print(f'model created..')
 
     loss = VAELoss(model)
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, betas=adam_betas)
 
     # load checkpoint if necessary
-    '''checkpoint_path = f"{output_dir}/model_dict{SEED}.pt"
+    '''checkpoint_path = f"{c_dir}/model_dict{SEED}.pt"
     if os.path.exists(checkpoint_path):
         checkpoint = torch.load(checkpoint_path)
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -234,8 +257,8 @@ def main(cfg: DictConfig):
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
 
         if lob_wandb:
-            wandb.log({"train/mse_loss": train_mse_loss, "train/kl_loss": train_kl_loss,\
-                "val/mse_loss": val_mse_loss, "val/kl_loss":val_kl_loss})
+            wandb.log({"train/mse_loss": train_mse_loss/normalizing_constant, "train/kl_loss": train_kl_loss,\
+                "val/mse_loss": val_mse_loss /normalizing_constant, "val/kl_loss":val_kl_loss})
 
         if val_mse_loss+val_kl_loss < best_valid_loss:
             best_valid_loss = val_mse_loss+val_kl_loss
@@ -245,13 +268,13 @@ def main(cfg: DictConfig):
                 wandb.save(f"{output_dir}/{output_file}.pt")
 
         print(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s')
-        print(f'\t Train MSE Loss: {train_mse_loss:.3f} Train KL Loss: {train_kl_loss:.3f}')
-        print(f'\t Val. MSE Loss: {val_mse_loss:.3f} Val. KL Loss: {val_kl_loss:.3f}')
+        print(f'\t Train MSE Loss: {train_mse_loss /normalizing_constant:.3f} Train KL Loss: {train_kl_loss:.3f}')
+        print(f'\t Val. MSE Loss: {val_mse_loss / normalizing_constant:.3f} Val. KL Loss: {val_kl_loss:.3f}')
 
         f = open(f"{output_dir}/{output_file}.txt", "a")
         f.write(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s\n')
-        f.write(f'\tTrain MSE Loss: {train_mse_loss:.3f} Train KL Loss: {train_kl_loss:.3f}\n')
-        f.write(f'\tVal. MSE Loss: {val_mse_loss:.3f} Val. KL Loss: {val_kl_loss:.3f}\n')
+        f.write(f'\tTrain MSE Loss: {train_mse_loss / normalizing_constant:.3f} Train KL Loss: {train_kl_loss:.3f}\n')
+        f.write(f'\tVal. MSE Loss: {val_mse_loss / normalizing_constant:.3f} Val. KL Loss: {val_kl_loss:.3f}\n')
         f.close()
         
         # save model and optimizer

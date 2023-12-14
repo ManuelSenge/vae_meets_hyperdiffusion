@@ -146,7 +146,7 @@ class VoxelDataset(Dataset):
 
 class WeightDataset(Dataset):
     def __init__(
-        self, mlps_folder, wandb_logger, model_dims, mlp_kwargs, cfg, object_names=None
+        self, mlps_folder, wandb_logger, model_dims, mlp_kwargs, cfg, object_names=None, normalize=1
     ):
         self.mlps_folder = mlps_folder
         self.condition = cfg.transformer_config.params.condition
@@ -168,6 +168,9 @@ class WeightDataset(Dataset):
                         file.split("_")[1] + "_" + file.split("_")[2]) in object_names)) or (file in object_names):
                     self.mlp_files.append(file)
         self.transform = None
+
+        self.normalize = normalize
+
         self.logger = wandb_logger
         self.model_dims = model_dims
         self.mlp_kwargs = mlp_kwargs
@@ -180,6 +183,7 @@ class WeightDataset(Dataset):
             ).type(torch.float32)
         else:
             self.first_weights = torch.tensor([0])
+
 
     def get_weights(self, state_dict):
         weights = []
@@ -236,6 +240,8 @@ class WeightDataset(Dataset):
                 low=0, high=self.cfg.augment_amount
             )  # Prev: 0.3
             weights = torch.lerp(weights, other_weights, lerp_alpha)
+
+        weights = weights * self.normalize
 
         return weights.type(torch.float32), weights_prev.type(torch.float32), weights_prev.type(torch.float32)
 
