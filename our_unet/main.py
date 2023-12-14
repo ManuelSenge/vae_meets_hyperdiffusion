@@ -47,7 +47,7 @@ def main(cfg: DictConfig):
     enc_chans = [64, 32, 16, 1]
     enc_kernel_sizes = [8, 6, 3, 3]
     device = "auto"
-    lob_wandb = 0
+    log_wandb = 0
     variational = False # True to make VAE variational False to make it an AE
     if device == 'auto':
         if torch.cuda.is_available():
@@ -69,7 +69,7 @@ def main(cfg: DictConfig):
     np.random.seed(SEED)
 
 
-    if lob_wandb:
+    if log_wandb:
         project = "unet"
 
         wandb.init( project=project,
@@ -202,19 +202,19 @@ def main(cfg: DictConfig):
         end_time = time.time()
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
 
-        if lob_wandb:
+        if log_wandb:
             wandb.log({"train/mse_loss": train_mse_loss, "train/kl_loss": train_kl_loss,\
                 "val/mse_loss": val_mse_loss, "val/kl_loss":val_kl_loss})
 
         if val_mse_loss+val_kl_loss < best_valid_loss:
             best_valid_loss = val_mse_loss+val_kl_loss
             torch.save(model.state_dict(), f"{output_dir}/{output_file}.pt")
-            if lob_wandb:
+            if log_wandb:
                 wandb.save(f"{output_dir}/{output_file}.pt")
 
         print(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s')
         print(f'\t Train MSE Loss: {train_mse_loss:.3f} Train KL Loss: {train_kl_loss:.3f}')
-        print(f'\t Val. MSE Loss: {val_mse_loss:.3f} Val. KL Loss: {val_kl_loss:.3f}')
+        print(f'\t Val. MSE Loss: {val_mse_loss:.3f} Val. KL Los^s: {val_kl_loss:.3f}')
 
         f = open(f"{output_dir}/{output_file}.txt", "a")
         f.write(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s\n')
@@ -235,7 +235,7 @@ def main(cfg: DictConfig):
     model.load_state_dict(torch.load(f"{output_dir}/{output_file}.pt"))
     test_mse_loss, test_kl_loss = evaluate(model, test_dl, loss, device, variational=variational)
 
-    if lob_wandb:
+    if log_wandb:
         wandb.log({"test/mse_loss": test_mse_loss, "test/kl_loss":test_kl_loss})
 
     print(f'Test MSE Loss: {test_mse_loss:.3f} Test KL Loss: {test_kl_loss:.3f}')
