@@ -143,3 +143,4 @@ dmypy.json
 .pyre/
 
 vols/
+src/ldm_autoencoder/taming/modules/autoencoder/lpips/vgg.pth
