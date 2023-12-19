@@ -19,6 +19,7 @@ from omegaconf import DictConfig
 import hydra
 from torchsummary import summary
 from model.ldm.modules.autoencoder import AutoencoderKL
+from loss import VAELoss
 
 # need this seed for the lookup (as data is randomly shuffled)
 random.seed(1234)
@@ -59,7 +60,7 @@ def main(cfg: DictConfig):
     wandb_enc_channels = "_".join([str(enc) for enc in enc_chans])
     wandb_enc_kernel_sizes = "_".join([str(enc) for enc in enc_kernel_sizes])
 
-    run_params_name = f'autoencoder_{attention_encoder}' #f'bn_lr{learning_rate}_E{attention_encoder}_num_att_layers{num_att_layers}_enc_chans{wandb_enc_channels}_enc_kernel_sizes{wandb_enc_kernel_sizes}_warmup_epochs{warmup_epochs}'
+    run_params_name = 'no_attention'
 
     output_file = f'{run_params_name}_{SEED}'
     checkpoint_path = output_dir
@@ -69,7 +70,7 @@ def main(cfg: DictConfig):
 
 
     if lob_wandb:
-        project = "unet"
+        project = "LDM"
 
         wandb.init( project=project,
                     entity="adl-cv",
@@ -162,11 +163,11 @@ def main(cfg: DictConfig):
     loss_config = config_model.model.params.lossconfig
     ddconfig = config_model.model.params.ddconfig
     model = AutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=512)
-    loss = model.loss
+    loss = VAELoss(None) # model.loss
 
     device = 'cpu'
     print(summary(model, (1, 36744), device="cpu"))
-    1/0
+    #1/0
 
     model = model.to(device)
     print(f'model created..')

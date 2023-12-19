@@ -13,12 +13,12 @@ model:
 
     ddconfig:
       double_z: True
-      z_channels: 64
-      resolution: 36744 #256
+      z_channels: 32
+      resolution: 36768 #256
       in_channels: 1
       out_ch: 1
-      ch: 128
-      ch_mult: [ 1,1,2,2,4,4, 4, 4]  # num_down = len(ch_mult)-1 # [ 1,1,2,2,4,4]
-      num_res_blocks: 2
-      attn_resolutions: [287] #[36744, 18372, 9186, 4593, 2296, 1148, 574, 287]
-      dropout: 0.0
+      ch: 1
+      ch_mult: [1,4,8,16,32,128] # num_down = len(ch_mult)-1 # [ 1,1,2,2,4,4]
+      num_res_blocks: 3
+      attn_resolutions: [2298] #[36768, 18384, 9192, 4596, 2298, 1149]
+      dropout: 0.2

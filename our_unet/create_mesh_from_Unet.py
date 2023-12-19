@@ -115,17 +115,17 @@ def main(cfg: DictConfig):
     Config.config = cfg
     cfg.filter_bad_path = '../' + cfg.filter_bad_path
     num_imgs = 3
-    model_path = '/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/unet/model/models/single_sample_overfit_2023-12-07_unet_4593__lr_0.0002_attention_res_[]_dropout_0.0_1234.pt'
+    model_path = '/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/our_unet/model/models/normalisation_2023-12-13_unet_2298__lr_0.0002_attention_res_8_16_dropout_0.2_1234.pt'
     log_wandb = 1
     
-    model = UNetModel(image_size=36744, 
+    model = UNetModel(image_size=36737+31, 
                     in_channels=1, 
                     model_channels=1, 
                     out_channels=1, 
                     num_res_blocks=3,
-                    attention_resolutions=[],
+                    attention_resolutions=[8, 16],
                     dropout=0.0,
-                    channel_mult=[1,2,4,8],
+                    channel_mult= [1, 4, 8, 16, 32],
                     num_heads=1,
                     dims=1,
                     num_head_channels=-1)
@@ -139,6 +139,21 @@ def main(cfg: DictConfig):
     )
     test_object_names = set([str.split(".")[0] for str in test_object_names])
     mlps_folder_train = '../' + Config.get("mlps_folder_train")
+
+    train_object_names = np.genfromtxt(
+        os.path.join(dataset_path, "train_split.lst"), dtype="str"
+    )
+    train_object_names = set([str.split(".")[0] for str in train_object_names])
+
+
+    train_dt = WeightDataset(
+        mlps_folder_train,
+        None,
+        0, # model.dims hardcoded in Transformer
+        mlp_kwargs,
+        cfg,
+        train_object_names,
+    )
 
     test_dt = WeightDataset(
         mlps_folder_train,
@@ -163,7 +178,7 @@ def main(cfg: DictConfig):
         wandb.init(
                 entity='adl-cv',
                 project="UNet eval",
-                name=f"single sample overfitt",
+                name=f"normalised correct",
                 #config={'attention_encoder': attention_encoder, 'num_imgs':num_imgs},
             )
 
@@ -171,11 +186,14 @@ def main(cfg: DictConfig):
         
     while count < num_imgs:
         sample, _, _ = test_dt.__getitem__(count)
+        sample *= 0.6829066828697457
         sample = sample.to(device)
-        sample_padded = torch.nn.functional.pad(sample.view((1, -1)), (3, 4)).to(device)
+        sample_padded = torch.nn.functional.pad(sample.view((1, -1)), (0,31)).to(device)
         enc_sample = model(sample_padded)
         enc_sample = enc_sample.view((-1,))
-        enc_sample = enc_sample[2:-5]
+        enc_sample = enc_sample[:-31]
+        enc_sample /= 0.6829066828697457
+
         true_img = generate_images_from_VAE(sample)
         print('true_img')
         pred_img = generate_images_from_VAE(enc_sample)

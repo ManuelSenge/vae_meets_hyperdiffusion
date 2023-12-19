@@ -15,7 +15,7 @@ def train(model, iterator, optimizer, loss, device, warmup, variational):
 
         predictions = model(weights)
 
-        loss_val_mse, loss_val_kl = loss(predictions, weights, variational)
+        loss_val_mse, loss_val_kl = loss(predictions[:, -31], weights[:, -31], variational)
         # during warmup only train mse loss
         if warmup or not variational:
             loss_val = loss_val_mse

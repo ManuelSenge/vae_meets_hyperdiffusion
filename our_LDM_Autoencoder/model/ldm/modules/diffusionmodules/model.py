@@ -35,7 +35,7 @@ def nonlinearity(x):
     return x*torch.sigmoid(x)
 
 
-def Normalize(in_channels, num_groups=32):
+def Normalize(in_channels, num_groups=1):
     return torch.nn.GroupNorm(num_groups=num_groups, num_channels=in_channels, eps=1e-6, affine=True)
 
 
@@ -71,8 +71,8 @@ class Downsample(nn.Module):
 
     def forward(self, x):
         if self.with_conv:
-            #pad = (0,1,0,1)
-            #x = torch.nn.functional.pad(x, pad, mode="constant", value=0)
+            pad = (0,1,0,0)
+            x = torch.nn.functional.pad(x, pad, mode="constant", value=0)
             x = self.conv(x)
         else:
             x = torch.nn.functional.avg_pool2d(x, kernel_size=2, stride=2)
