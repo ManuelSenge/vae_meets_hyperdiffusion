@@ -14,6 +14,7 @@ import numpy as np
 import sys
 sys.path.append('../')
 from dataset import WeightDataset
+from sampler import SingleInstanceBatchSampler
 from hd_utils import Config
 from omegaconf import DictConfig
 import hydra
@@ -34,12 +35,20 @@ def main(cfg: DictConfig):
     Config.config = cfg
     cfg.filter_bad_path = '../' + cfg.filter_bad_path
     output_dir = '/hyperdiffusion/output_files'
+
+    # this is whats actually used
+    print('create model..')
+    config_model = OmegaConf.load('./model/autoencoder_kl_8x8x64.yaml')
+
     BS = 32
     SEED = 1234
-    N_EPOCHS = 100
+    N_EPOCHS = 800
     warmup_epochs = 10
     normalize = True
-    learning_rate = 0.0002
+    learning_rate = 0.00015
+    single_sample_overfit = True
+    single_sample_overfit_index = 1
+
     device = "auto"
     log_wandb = 1
     variational = False # True to make VAE variational False to make it an AE
@@ -50,8 +59,20 @@ def main(cfg: DictConfig):
             device = torch.device('mps')
         else:
             device = torch.device('cpu')
+    
+    ae_params = config_model.model.params.ddconfig
+    attention_resolutions = ae_params.attn_resolutions
+    dropout = ae_params.dropout
+    num_res = ae_params.num_res_blocks
+    ch_mult = ae_params.ch_mult
 
-    run_params_name = f'ldm_latent_1149_attention_[1149]_dropout_0.2_lr_0.0002_num_res_3_normalized_[1,4,8,16,32,64]' #f'bn_lr{learning_rate}_E{attention_encoder}_num_att_layers{num_att_layers}_enc_chans{wandb_enc_channels}_enc_kernel_sizes{wandb_enc_kernel_sizes}_warmup_epochs{warmup_epochs}'
+    run_params_name = f'ldm_latent_1149_attention_{attention_resolutions}_dropout_{dropout}_lr_{learning_rate}_num_res_{num_res}_ch_mult_{ch_mult}' #f'bn_lr{learning_rate}_E{attention_encoder}_num_att_layers{num_att_layers}_enc_chans{wandb_enc_channels}_enc_kernel_sizes{wandb_enc_kernel_sizes}_warmup_epochs{warmup_epochs}'
+    
+    if normalize:
+        run_params_name += '_normalized'
+
+    if single_sample_overfit:
+        run_params_name = f'single_sample_overfit_index_{single_sample_overfit_index}_' + run_params_name
 
     output_file = f'{run_params_name}_{SEED}'
     checkpoint_path = output_dir
@@ -71,11 +92,14 @@ def main(cfg: DictConfig):
                     "batch_size": BS,
                     "SEED": SEED,
                     "epochs": N_EPOCHS,
-                    "normalize": True,
-                    "ch_mult": [ 1,4,8,16,32,64],
-                    "dropout": 0.2,
-                    "num_res_block": 3,
-                    "latent": 1149
+                    "normalize": normalize,
+                    "ch_mult": ch_mult,
+                    "single_sample_overfit": single_sample_overfit,
+                    "single_sample_overfit_index": single_sample_overfit_index if single_sample_overfit else -1,
+                    "dropout": dropout,
+                    "num_res_block": num_res,
+                    "latent": 1149,
+                    "attn_resolutions":  attention_resolutions,
                     })
 
     dataset_path = os.path.join('..', Config.config["dataset_dir"], Config.config["dataset"])
@@ -104,7 +128,8 @@ def main(cfg: DictConfig):
             None, 
             0,
             mlp_kwargs,
-            cfg=cfg
+            cfg,
+            train_object_names
         )
 
         nets = [oai_coeff_dataset[i][0] for i in range(len(oai_coeff_dataset.mlp_files))]
@@ -113,8 +138,6 @@ def main(cfg: DictConfig):
         oai_coeff = 0.538 / stdev # openai coefficient according to G.pt
         print("OAI-Coeff Normalization: ", oai_coeff)
     normalizing_constant = oai_coeff if oai_coeff else 1
-
-    print("OAI-Coeff Normalization: ", normalizing_constant)
 
     # create dataset and dataloader
     print('create dataset...')
@@ -128,13 +151,23 @@ def main(cfg: DictConfig):
         normalize=normalizing_constant
     )
 
-    train_dl = DataLoader(
-        train_dt,
-        batch_size=Config.get("batch_size"),
-        shuffle=True,
-        num_workers=1,
-        pin_memory=True,
-    )
+    train_dl = None
+    if single_sample_overfit:
+        train_dl = DataLoader(
+            train_dt,
+            sampler = SingleInstanceBatchSampler(single_sample_overfit_index, len(train_dt)),
+            batch_size=BS,
+            num_workers=1,
+            pin_memory=True
+        )
+    else: 
+        train_dl = DataLoader(
+            train_dt,
+            batch_size=Config.get("batch_size"),
+            shuffle=True,
+            num_workers=1,
+            pin_memory=True,
+        )
 
     val_dt = WeightDataset(
         mlps_folder_train,
@@ -174,8 +207,7 @@ def main(cfg: DictConfig):
 
     # create model loss and optimizer
     #model = VariationalAutoencoder(latent_dims=512, device=device)
-    print('create model..')
-    config_model = OmegaConf.load('./model/autoencoder_kl_8x8x64.yaml')
+
     loss_config = config_model.model.params.lossconfig
     ddconfig = config_model.model.params.ddconfig
     model = AutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=1149)

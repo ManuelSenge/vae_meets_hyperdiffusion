@@ -155,7 +155,7 @@ def main(cfg: DictConfig):
     if single_sample_overfit:
         train_dl = DataLoader(
             train_dt,
-            sampler = SingleInstanceBatchSampler(len(train_dt)),
+            sampler = SingleInstanceBatchSampler(1, len(train_dt)),
             batch_size=BS,
             num_workers=1,
             pin_memory=True
