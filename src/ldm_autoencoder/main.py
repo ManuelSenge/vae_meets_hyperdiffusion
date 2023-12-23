@@ -42,13 +42,22 @@ def main(cfg: DictConfig):
 
     BS = 32
     SEED = 1234
-    N_EPOCHS = 800
+    N_EPOCHS = 1000
     warmup_epochs = 10
     normalize = True
-    learning_rate = 0.00015
-    single_sample_overfit = True
+    learning_rate = 0.0002
+    min_lr = learning_rate / 100
+    single_sample_overfit = False
     single_sample_overfit_index = 1
+    scheduler = "exp_capped"
 
+
+    if scheduler=="exp_capped":
+        lr_lambda = lambda epoch: max(0.99 ** (epoch//10), min_lr / learning_rate )
+    elif scheduler is None:
+        lr_lambda = lambda _: 1
+    else:
+        raise ValueError(f"Scheduler value {scheduler} not recognized")
     device = "auto"
     log_wandb = 1
     variational = False # True to make VAE variational False to make it an AE
@@ -73,6 +82,9 @@ def main(cfg: DictConfig):
 
     if single_sample_overfit:
         run_params_name = f'single_sample_overfit_index_{single_sample_overfit_index}_' + run_params_name
+
+    if scheduler is not None:
+        run_params_name += f'schedule_{scheduler}'
 
     output_file = f'{run_params_name}_{SEED}'
     checkpoint_path = output_dir
@@ -100,6 +112,7 @@ def main(cfg: DictConfig):
                     "num_res_block": num_res,
                     "latent": 1149,
                     "attn_resolutions":  attention_resolutions,
+                    "lr_scheduler": scheduler
                     })
 
     dataset_path = os.path.join('..', Config.config["dataset_dir"], Config.config["dataset"])
@@ -220,7 +233,12 @@ def main(cfg: DictConfig):
     model = model.to(device)
     print(f'model created..')
 
+    
+
+    
+
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=lr_lambda)
 
     # load checkpoint if necessary
     '''checkpoint_path = f"{output_dir}/model_dict{SEED}.pt"
@@ -244,23 +262,28 @@ def main(cfg: DictConfig):
         val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, variational=variational, normalizing_constant=normalizing_constant)
         end_time = time.time()
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
-
+        
         if log_wandb:
-            wandb.log({"train/mse_loss": train_mse_loss, "train/kl_loss": train_kl_loss,\
-                "val/mse_loss": val_mse_loss, "val/kl_loss":val_kl_loss})
-
+            wandb.log({"train/mse_loss": train_mse_loss,
+                        "train/kl_loss": train_kl_loss,
+                        "val/mse_loss": val_mse_loss,
+                        "val/kl_loss":val_kl_loss, 
+                        "lr": lr_scheduler.get_last_lr()[0],
+                        "epoch": epoch,}
+            )
+        lr_scheduler.step()
         if val_mse_loss+val_kl_loss < best_valid_loss:
             best_valid_loss = val_mse_loss+val_kl_loss
             torch.save(model.state_dict(), f"{output_dir}/{output_file}.pt")
             if log_wandb:
-                wandb.save(f"{output_dir}/{output_file}.pt")
+                wandb.save(f"{output_dir}/{output_file}.pt", base_path='/hyperdiffusion')
 
-        print(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s')
+        print(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s | LR: {lr_scheduler.get_last_lr()[0]}')
         print(f'\t Train MSE Loss: {train_mse_loss:.3f} Train KL Loss: {train_kl_loss:.3f}')
         print(f'\t Val. MSE Loss: {val_mse_loss:.3f} Val. KL Loss: {val_kl_loss:.3f}')
 
         f = open(f"{output_dir}/{output_file}.txt", "a")
-        f.write(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s\n')
+        f.write(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s\n | LR: {lr_scheduler.get_last_lr()[0]}')
         f.write(f'\tTrain MSE Loss: {train_mse_loss:.3f} Train KL Loss: {train_kl_loss:.3f}\n')
         f.write(f'\tVal. MSE Loss: {val_mse_loss:.3f} Val. KL Loss: {val_kl_loss:.3f}\n')
         f.close()

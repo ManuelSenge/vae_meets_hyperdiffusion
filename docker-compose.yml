@@ -16,6 +16,7 @@ services:
       - ./src/configs:/hyperdiffusion/configs
       - ./src/vae:/hyperdiffusion/vae
       - ./src/unet:/hyperdiffusion/unet
+      - ./src/ldm_autoencoder:/hyperdiffusion/ldm_autoencoder
     deploy:
       resources:
         reservations:

@@ -116,13 +116,12 @@ def generate_images_from_VAE(x_0):
 def main(cfg: DictConfig):
     Config.config = cfg
     cfg.filter_bad_path = '../' + cfg.filter_bad_path
-    num_imgs = 3
-    model_file = 'single_sample_overfit_ldm_latent_1149_attention_[2298]_dropout_0.0_lr_0.0002_num_res_3_ch_mult_[1, 4, 8, 16, 32, 128]_normalized_1234.pt'
+    model_file = 'ldm_latent_1149_attention_[2298]_dropout_0.0_lr_0.0001_num_res_3_ch_mult_[1, 4, 8, 16, 32, 128]_normalized_1234.pt'
     model_path = os.path.join('../output_files', model_file)
 
     single_sample_overfit = model_file.startswith('single_sample_overfit')
 
-    log_wandb = 0
+    log_wandb = 1
 
     dataset_path = os.path.join('..', Config.config["dataset_dir"], Config.config["dataset"])
     test_object_names = np.genfromtxt(
@@ -177,14 +176,18 @@ def main(cfg: DictConfig):
         wandb.init(
                 entity='adl-cv',
                 project="LDM-AE eval",
-                name=f"eval_{model_file}"
+                name=f"eval_{model_file}",
+                group="Julian"
                 #config={'attention_encoder': attention_encoder, 'num_imgs':num_imgs},
             )
 
         wandb_logger = WandbLogger()
-        
-    while count < num_imgs:
-        sample, _, _ = train_dt.__getitem__(count) if not single_sample_overfit else train_dt.__getitem__(0)
+    
+    # num_imgs = 3
+
+    # while count < num_imgs:
+    for ix in [3,4,9,10,12,13,14,16,21, 24,28]:
+        sample, _, _ = train_dt.__getitem__(ix) if not single_sample_overfit else train_dt.__getitem__(1)
         # normalize sample
         sample *= 0.6930342789347619
         sample = sample.view(1, 1, sample.shape[0])
