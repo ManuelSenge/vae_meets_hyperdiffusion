@@ -21,6 +21,7 @@ import hydra
 from torchsummary import summary
 from model.ldm.modules.autoencoder import AutoencoderKL
 from loss import VAELoss
+import inspect
 
 # need this seed for the lookup (as data is randomly shuffled)
 random.seed(1234)
@@ -42,22 +43,25 @@ def main(cfg: DictConfig):
 
     BS = 32
     SEED = 1234
-    N_EPOCHS = 1000
+    N_EPOCHS = 800
     warmup_epochs = 10
     normalize = True
     learning_rate = 0.0002
     min_lr = learning_rate / 100
     single_sample_overfit = False
     single_sample_overfit_index = 1
-    scheduler = "exp_capped"
+    scheduler = "exp_capped_0.95"
 
 
-    if scheduler=="exp_capped":
-        lr_lambda = lambda epoch: max(0.99 ** (epoch//10), min_lr / learning_rate )
+    if scheduler.startswith("exp_capped_"):
+        mult = float(scheduler[11:])
+        assert 0 < mult < 1
+        lr_lambda = lambda epoch: max(mult** (epoch//40), min_lr / learning_rate)
     elif scheduler is None:
         lr_lambda = lambda _: 1
     else:
         raise ValueError(f"Scheduler value {scheduler} not recognized")
+    lambda_function_str = inspect.getsource(lr_lambda).strip()
     device = "auto"
     log_wandb = 1
     variational = False # True to make VAE variational False to make it an AE
@@ -87,8 +91,10 @@ def main(cfg: DictConfig):
         run_params_name += f'schedule_{scheduler}'
 
     output_file = f'{run_params_name}_{SEED}'
-    checkpoint_path = output_dir
     
+    use_checkpoint = False
+
+    checkpoint_path = f"{output_dir}/cp_{output_file}.pt"
     random.seed(SEED)
     np.random.seed(SEED)
 
@@ -112,7 +118,9 @@ def main(cfg: DictConfig):
                     "num_res_block": num_res,
                     "latent": 1149,
                     "attn_resolutions":  attention_resolutions,
-                    "lr_scheduler": scheduler
+                    "lr_scheduler": scheduler,
+                    "lr_lambda_function": lambda_function_str,
+                    "use_checkpoint": use_checkpoint
                     })
 
     dataset_path = os.path.join('..', Config.config["dataset_dir"], Config.config["dataset"])
@@ -241,17 +249,33 @@ def main(cfg: DictConfig):
     lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=lr_lambda)
 
     # load checkpoint if necessary
-    '''checkpoint_path = f"{output_dir}/model_dict{SEED}.pt"
-    if os.path.exists(checkpoint_path):
+    
+    if use_checkpoint:
+        if not os.path.exists(checkpoint_path):
+            raise ValueError(f"Could not find checkpoint: {checkpoint_path}")
         checkpoint = torch.load(checkpoint_path)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        start_epoch = checkpoint['epoch']
-        train_loss = checkpoint['loss']
-        best_valid_loss = checkpoint['best_valid_loss']
-    else:'''
-    start_epoch = 0
-    best_valid_loss = 100000
+        lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
+        epoch = checkpoint['epoch']
+        train_mse_loss = checkpoint['train_mse_loss']
+        train_kl_loss = checkpoint['train_kl_loss']
+        val_mse_loss = checkpoint['val_mse_loss']
+        val_kl_loss = checkpoint['val_kl_loss']
+        if log_wandb:
+            wandb.log({ "train/mse_loss": train_mse_loss,
+                        "train/kl_loss": train_kl_loss,
+                        "val/mse_loss": val_mse_loss,
+                        "val/kl_loss":val_kl_loss, 
+                        "lr": lr_scheduler.get_last_lr()[0],
+                        "epoch": epoch,}
+            )
+
+        best_val_loss = checkpoint['best_val_loss']
+        start_epoch = epoch + 1
+    else:
+        start_epoch = 0
+        best_val_loss = 100000
     
     
     print(f'start training..')
@@ -262,21 +286,23 @@ def main(cfg: DictConfig):
         val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, variational=variational, normalizing_constant=normalizing_constant)
         end_time = time.time()
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
-        
+
+        if val_mse_loss+val_kl_loss < best_val_loss:
+            best_val_loss = val_mse_loss+val_kl_loss
+            torch.save(model.state_dict(), f"{output_dir}/{output_file}.pt")
+            # if log_wandb:
+            #     wandb.save(f"{output_dir}/{output_file}.pt", base_path='/hyperdiffusion')
+
         if log_wandb:
             wandb.log({"train/mse_loss": train_mse_loss,
                         "train/kl_loss": train_kl_loss,
                         "val/mse_loss": val_mse_loss,
                         "val/kl_loss":val_kl_loss, 
                         "lr": lr_scheduler.get_last_lr()[0],
+                        'best_val_loss': best_val_loss,
                         "epoch": epoch,}
             )
-        lr_scheduler.step()
-        if val_mse_loss+val_kl_loss < best_valid_loss:
-            best_valid_loss = val_mse_loss+val_kl_loss
-            torch.save(model.state_dict(), f"{output_dir}/{output_file}.pt")
-            if log_wandb:
-                wandb.save(f"{output_dir}/{output_file}.pt", base_path='/hyperdiffusion')
+
 
         print(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s | LR: {lr_scheduler.get_last_lr()[0]}')
         print(f'\t Train MSE Loss: {train_mse_loss:.3f} Train KL Loss: {train_kl_loss:.3f}')
@@ -288,14 +314,22 @@ def main(cfg: DictConfig):
         f.write(f'\tVal. MSE Loss: {val_mse_loss:.3f} Val. KL Loss: {val_kl_loss:.3f}\n')
         f.close()
         
-        # save model and optimizer
-        '''torch.save({
-                    'epoch': epoch,
-                    'model_state_dict': model.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'loss': train_loss,
-                    'best_valid_loss':best_valid_loss,
-                    }, checkpoint_path)'''
+
+        # save model and optimizer every 20 epochs
+        if epoch % 20 == 0:
+            torch.save({
+                        'epoch': epoch,
+                        'model_state_dict': model.state_dict(),
+                        'optimizer_state_dict': optimizer.state_dict(),
+                        'lr_scheduler_state_dict': lr_scheduler.state_dict(),
+                        'train_mse_loss': train_mse_loss,
+                        'train_kl_loss': train_kl_loss,  
+                        'val_mse_loss': val_mse_loss,
+                        'val_kl_loss': val_kl_loss,
+                        'best_val_loss':best_val_loss,
+                        }, checkpoint_path)
+            
+        lr_scheduler.step()
 
     # load the best model and test it on the test set
     model.load_state_dict(torch.load(f"{output_dir}/{output_file}.pt"))
