@@ -43,7 +43,7 @@ else:
 
 
 mlp_kwargs = OmegaConf.create({'model_type':'mlp_3d', 'out_size':1, 'hidden_neurons':[128, 128, 128], 'output_type':'occ', 'out_act':'sigmoid', 'multires':4, \
-    'use_leaky_relu':False, 'move':False, 'device':'cuda'})
+    'use_leaky_relu':False, 'move':False, 'device':str(device)}) #'cuda'
 
 i = 0
 mesh_dir = "../gen_meshes/ldm"
@@ -213,7 +213,45 @@ def main(cfg: DictConfig):
                 )
         count += 1
 
+def generate_during_training(model, samples, epoch, device, wandb_logger, variational):
 
+    if variational:
+        N_dist = torch.distributions.Normal(0, 1)
+        N_dist.loc = N_dist.loc.to(device) # hack to get sampling on the GPU
+        N_dist.scale = N_dist.scale.to(device)
+
+    for i, sample in enumerate(samples):
+        if variational:
+            sample = N_dist.sample((1, 1149, 1149)) #2298, 1149
+            dec_sample = model.decode(sample)
+            dec_sample = dec_sample.view((-1,))
+            dec_sample = dec_sample[:-31]
+            dec_sample /= 0.6930342789347619
+            pred_img = generate_images_from_VAE(dec_sample)
+
+            wandb_logger.log_image(
+                    "generated_renders", pred_img, step=epoch*10+i
+                )
+
+        else: 
+            sample *= 0.6930342789347619
+            sample = sample.view(1, 1, sample.shape[0])
+            sample_padded = torch.nn.functional.pad(sample,  (0,31)).to(device)
+            enc_sample, posterior = model(sample_padded, sample_posterior=variational)
+            #mse = torch.nn.functional.mse_loss(sample_padded, enc_sample)
+            enc_sample = enc_sample.view((-1,))
+            enc_sample = enc_sample[:-31]
+            enc_sample /= 0.6930342789347619
+
+            true_img = generate_images_from_VAE(sample)
+            pred_img = generate_images_from_VAE(enc_sample)
+            wandb_logger.log_image(
+                    "true_renders", true_img, step=epoch*10+i
+                )
+            
+            wandb_logger.log_image(
+                    "generated_renders", pred_img, step=epoch*10+i
+                )
 
 if __name__ == "__main__":
     main()

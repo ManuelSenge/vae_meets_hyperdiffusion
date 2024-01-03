@@ -22,7 +22,8 @@ from torchsummary import summary
 from model.ldm.modules.autoencoder import AutoencoderKL
 from loss import VAELoss
 import inspect
-
+from create_mesh_from_ldm_net import generate_during_training
+from pytorch_lightning.loggers import WandbLogger
 # need this seed for the lookup (as data is randomly shuffled)
 random.seed(1234)
 np.random.seed(1234)
@@ -35,7 +36,7 @@ np.random.seed(1234)
 def main(cfg: DictConfig):
     Config.config = cfg
     cfg.filter_bad_path = '../' + cfg.filter_bad_path
-    output_dir = '/hyperdiffusion/output_files'
+    output_dir = '/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/output_files'
 
     # this is whats actually used
     print('create model..')
@@ -51,7 +52,8 @@ def main(cfg: DictConfig):
     single_sample_overfit = False
     single_sample_overfit_index = 1
     scheduler = "exp_capped_0.95"
-
+    generate_every_n_epochs = 1
+    generate_n_meshes = 2
 
     if scheduler.startswith("exp_capped_"):
         mult = float(scheduler[11:])
@@ -64,7 +66,7 @@ def main(cfg: DictConfig):
     lambda_function_str = inspect.getsource(lr_lambda).strip()
     device = "auto"
     log_wandb = 1
-    variational = False # True to make VAE variational False to make it an AE
+
     if device == 'auto':
         if torch.cuda.is_available():
             device = torch.device('cuda')
@@ -104,7 +106,7 @@ def main(cfg: DictConfig):
 
         wandb.init( project=project,
                     entity="adl-cv",
-                    name=f'{run_params_name}',
+                    name='test',#f'{run_params_name}',
                     config={
                     "learning_rate": learning_rate,
                     "batch_size": BS,
@@ -122,6 +124,7 @@ def main(cfg: DictConfig):
                     "lr_lambda_function": lambda_function_str,
                     "use_checkpoint": use_checkpoint
                     })
+        wandb_logger = WandbLogger()
 
     dataset_path = os.path.join('..', Config.config["dataset_dir"], Config.config["dataset"])
 
@@ -226,12 +229,18 @@ def main(cfg: DictConfig):
         pin_memory=True,
     )
 
+    # get test samples for generation meshes
+    test_sampels = []
+    for i in range(generate_n_meshes):
+        test_sampels.append(test_dt.__getitem__(i+1)[0]) # skip first one as its bad
+
     # create model loss and optimizer
     #model = VariationalAutoencoder(latent_dims=512, device=device)
 
     loss_config = config_model.model.params.lossconfig
     ddconfig = config_model.model.params.ddconfig
     model = AutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=1149)
+    variational = ddconfig['variational']
     # loss = model.loss
 
     loss = VAELoss(autoencoder=None)
@@ -241,9 +250,6 @@ def main(cfg: DictConfig):
     model = model.to(device)
     print(f'model created..')
 
-    
-
-    
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=lr_lambda)
@@ -284,7 +290,10 @@ def main(cfg: DictConfig):
         start_time = time.time()
         train_mse_loss, train_kl_loss = train(model, train_dl, optimizer, loss, device, epoch <= warmup_epochs, variational=variational, normalizing_constant=normalizing_constant)
         val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, variational=variational, normalizing_constant=normalizing_constant)
+        if log_wandb and epoch%generate_every_n_epochs==0:
+            generate_during_training(model, samples=test_sampels, epoch=epoch, device=device, wandb_logger=wandb_logger, variational=variational)
         end_time = time.time()
+
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
 
         if val_mse_loss+val_kl_loss < best_val_loss:
@@ -302,6 +311,7 @@ def main(cfg: DictConfig):
                         'best_val_loss': best_val_loss,
                         "epoch": epoch,}
             )
+            
 
 
         print(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s | LR: {lr_scheduler.get_last_lr()[0]}')

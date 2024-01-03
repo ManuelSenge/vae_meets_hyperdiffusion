@@ -332,6 +332,7 @@ class AutoencoderKL(pl.LightningModule):
         moments = self.quant_conv(h)
         posterior = DiagonalGaussianDistribution(moments, variational=self.variational)
         return posterior
+    
     def decode(self, z):
         z = self.post_quant_conv(z)
         dec = self.decoder(z)
