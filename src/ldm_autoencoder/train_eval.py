@@ -30,7 +30,7 @@ def train(model, iterator, optimizer, loss, device, warmup, variational, normali
         break
             
 
-    return epoch_loss_val_mse / (len(iterator) * normalizing_constant), epoch_loss_val_kl / len(iterator)
+    return epoch_loss_val_mse / (len(iterator) * normalizing_constant), epoch_loss_val_kl / len(iterator), posterior
 
 def evaluate(model, iterator, loss, device, variational, normalizing_constant=1):
     epoch_loss_val_mse = 0

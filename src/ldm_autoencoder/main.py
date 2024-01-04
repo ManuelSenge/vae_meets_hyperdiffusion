@@ -285,19 +285,23 @@ def main(cfg: DictConfig):
     
     
     print(f'start training..')
+    best_posterior = None
 
     for epoch in range(start_epoch, N_EPOCHS):
         start_time = time.time()
-        train_mse_loss, train_kl_loss = train(model, train_dl, optimizer, loss, device, epoch <= warmup_epochs, variational=variational, normalizing_constant=normalizing_constant)
+        train_mse_loss, train_kl_loss, posterior = train(model, train_dl, optimizer, loss, device, epoch <= warmup_epochs, variational=variational, normalizing_constant=normalizing_constant)
         val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, variational=variational, normalizing_constant=normalizing_constant)
         if log_wandb and epoch%generate_every_n_epochs==0:
-            generate_during_training(model, samples=test_sampels, epoch=epoch, device=device, wandb_logger=wandb_logger, variational=variational)
+            distribution = model.posterior if variational else None
+            generate_during_training(model, samples=test_sampels, epoch=epoch, device=device, wandb_logger=wandb_logger, variational=variational, distribution=distribution)
         end_time = time.time()
 
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
 
         if val_mse_loss+val_kl_loss < best_val_loss:
             best_val_loss = val_mse_loss+val_kl_loss
+            best_posterior = posterior
+            torch.save(best_posterior.parameters, f"{output_dir}/posterior_param.pt")
             torch.save(model.state_dict(), f"{output_dir}/{output_file}.pt")
             # if log_wandb:
             #     wandb.save(f"{output_dir}/{output_file}.pt", base_path='/hyperdiffusion')

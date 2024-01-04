@@ -213,17 +213,13 @@ def main(cfg: DictConfig):
                 )
         count += 1
 
-def generate_during_training(model, samples, epoch, device, wandb_logger, variational):
+def generate_during_training(model, samples, epoch, device, wandb_logger, variational, distribution):
 
-    if variational:
-        N_dist = torch.distributions.Normal(0, 1)
-        N_dist.loc = N_dist.loc.to(device) # hack to get sampling on the GPU
-        N_dist.scale = N_dist.scale.to(device)
-
+    
     for i, sample in enumerate(samples):
         if variational:
-            sample = N_dist.sample((1, 1149, 1149)) #2298, 1149
-            dec_sample = model.decode(sample)
+            sample = distribution.sample()[0]
+            dec_sample = model.decode(sample.view(1, sample.shape[0], sample.shape[1]))
             dec_sample = dec_sample.view((-1,))
             dec_sample = dec_sample[:-31]
             dec_sample /= 0.6930342789347619
