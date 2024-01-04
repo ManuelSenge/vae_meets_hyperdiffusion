@@ -301,7 +301,7 @@ def main(cfg: DictConfig):
         if val_mse_loss+val_kl_loss < best_val_loss:
             best_val_loss = val_mse_loss+val_kl_loss
             best_posterior = posterior
-            torch.save(best_posterior.parameters, f"{output_dir}/posterior_param.pt")
+            torch.save(best_posterior.parameters, f"{output_dir}/posterior_{output_file}.pt")
             torch.save(model.state_dict(), f"{output_dir}/{output_file}.pt")
             # if log_wandb:
             #     wandb.save(f"{output_dir}/{output_file}.pt", base_path='/hyperdiffusion')
