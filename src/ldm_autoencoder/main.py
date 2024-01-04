@@ -21,11 +21,17 @@ import hydra
 from torchsummary import summary
 from model.ldm.modules.autoencoder import AutoencoderKL
 from loss import VAELoss
-import inspect
+from functools import partial
+from enum import Enum
 
 # need this seed for the lookup (as data is randomly shuffled)
 random.seed(1234)
 np.random.seed(1234)
+
+class ScheduleType(Enum):
+    EXP_CAPPED = 1
+    CYCLIC = 2
+    NONE = 3
 
 @hydra.main(
     version_base=None,
@@ -50,18 +56,28 @@ def main(cfg: DictConfig):
     min_lr = learning_rate / 100
     single_sample_overfit = False
     single_sample_overfit_index = 1
-    scheduler = "exp_capped_0.95"
 
+    scheduler = ScheduleType.CYCLIC
 
-    if scheduler.startswith("exp_capped_"):
-        mult = float(scheduler[11:])
-        assert 0 < mult < 1
-        lr_lambda = lambda epoch: max(mult** (epoch//40), min_lr / learning_rate)
+    if scheduler == ScheduleType.EXP_CAPPED:
+        scheduler_exp_mult = 0.95
+        assert 0 < scheduler_exp_mult < 1
+        lr_lambda = lambda epoch: max(scheduler_exp_mult** (epoch//40), min_lr / learning_rate)
+        optim_scheduler = partial(torch.optim.lr_scheduler.LambdaLR, lr_lambda=lr_lambda)
+        scheduler_string = f"exp_mult_{scheduler_exp_mult}"
+    elif scheduler == ScheduleType.CYCLIC:
+        min_lr = 0.0001
+        max_lr = 0.0003
+        step_size_up = 50
+        optim_scheduler = partial(torch.optim.lr_scheduler.CyclicLR, base_lr=min_lr, max_lr=max_lr, step_size_up=step_size_up, cycle_momentum=False)
+        scheduler_string = f"min_lr_{min_lr}_max_lr_{max_lr}_step_size_up_{step_size_up}"
     elif scheduler is None:
         lr_lambda = lambda _: 1
+        optim_scheduler = partial(torch.optim.lr_scheduler.LambdaLR, lr_lambda=lr_lambda)
+        scheduler_string = "none"
     else:
         raise ValueError(f"Scheduler value {scheduler} not recognized")
-    lambda_function_str = inspect.getsource(lr_lambda).strip()
+    
     device = "auto"
     log_wandb = 1
     variational = False # True to make VAE variational False to make it an AE
@@ -118,8 +134,7 @@ def main(cfg: DictConfig):
                     "num_res_block": num_res,
                     "latent": 1149,
                     "attn_resolutions":  attention_resolutions,
-                    "lr_scheduler": scheduler,
-                    "lr_lambda_function": lambda_function_str,
+                    "lr_scheduler": scheduler_string,
                     "use_checkpoint": use_checkpoint
                     })
 
@@ -246,7 +261,7 @@ def main(cfg: DictConfig):
     
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=lr_lambda)
+    lr_scheduler = optim_scheduler(optimizer)
 
     # load checkpoint if necessary
     
