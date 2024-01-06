@@ -60,7 +60,7 @@ def main(cfg: DictConfig):
     single_sample_overfit = False
     generate_every_n_epochs = 100
     generate_n_meshes = 1
-    remove_indx = False
+    remove_indx = True
 
     device = "auto"
     log_wandb = 1
@@ -263,8 +263,8 @@ def main(cfg: DictConfig):
 
     for epoch in range(start_epoch, N_EPOCHS):
         start_time = time.time()
-        train_mse_loss, train_kl_loss = train(model, train_dl, optimizer, loss, device, epoch <= warmup_epochs, variational=variational)
-        val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, variational=variational)
+        train_mse_loss, train_kl_loss = train(model, train_dl, optimizer, loss, device, epoch <= warmup_epochs, variational=variational, remove_indx=remove_indx)
+        val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, variational=variational, remove_indx=remove_indx)
         if log_wandb and epoch%generate_every_n_epochs==0:
             generate_during_training(model, samples=test_sampels, epoch=epoch, device=device, wandb_logger=wandb_logger, remove_indx=remove_indx)
         end_time = time.time()

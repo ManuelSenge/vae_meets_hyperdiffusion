@@ -27,9 +27,7 @@ class DiagonalGaussianDistribution(object):
         if not variational:
             self.mean  = parameters
         else:
-            print('parameters', parameters.shape)
             self.mean, self.logvar = torch.chunk(parameters, 2, dim=1)
-            print('split', self.mean.shape, self.logvar.shape)
             self.logvar = torch.clamp(self.logvar, -30.0, 20.0)
             self.deterministic = deterministic
             self.std = torch.exp(0.5 * self.logvar)
@@ -38,7 +36,6 @@ class DiagonalGaussianDistribution(object):
                 self.var = self.std = torch.zeros_like(self.mean).to(device=self.parameters.device)
 
     def sample(self):
-        print('self.mean', self.mean.shape)
         x = self.mean + self.std * torch.randn(self.mean.shape).to(device=self.parameters.device)
         return x
 

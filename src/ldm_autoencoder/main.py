@@ -83,7 +83,7 @@ def main(cfg: DictConfig):
     
     device = "auto"
     log_wandb = 1
-    remove_indx = False
+    remove_indx = True
 
     if device == 'auto':
         if torch.cuda.is_available():
@@ -257,7 +257,13 @@ def main(cfg: DictConfig):
 
     loss_config = config_model.model.params.lossconfig
     ddconfig = config_model.model.params.ddconfig
-    model = AutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=1149)
+
+    if remove_indx:
+        embed_dim = 1034
+    else:
+        embed_dim = 1149
+
+    model = AutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=embed_dim)
     variational = ddconfig['variational']
     # loss = model.loss
 
@@ -307,8 +313,8 @@ def main(cfg: DictConfig):
 
     for epoch in range(start_epoch, N_EPOCHS):
         start_time = time.time()
-        train_mse_loss, train_kl_loss, posterior = train(model, train_dl, optimizer, loss, device, epoch <= warmup_epochs, variational=variational, normalizing_constant=normalizing_constant)
-        val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, variational=variational, normalizing_constant=normalizing_constant)
+        train_mse_loss, train_kl_loss, posterior = train(model, train_dl, optimizer, loss, device, epoch <= warmup_epochs, variational=variational, normalizing_constant=normalizing_constant, remove_indx=remove_indx)
+        val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, variational=variational, normalizing_constant=normalizing_constant, remove_indx=remove_indx)
         if log_wandb and epoch%generate_every_n_epochs==0:
             distribution = model.posterior if variational else None
             generate_during_training(model, samples=test_sampels, epoch=epoch, device=device, wandb_logger=wandb_logger, variational=variational, distribution=distribution, remove_indx=remove_indx)

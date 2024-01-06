@@ -215,23 +215,27 @@ def main(cfg: DictConfig):
 
 def generate_during_training(model, samples, epoch, device, wandb_logger, variational, distribution, remove_indx=None):
 
-    
+    if remove_indx:
+        padding = 21
+    else:
+        padding = 31
+        
     for i, sample in enumerate(samples):
         if variational:
             sample = distribution.sample()[0]
-            print('distribution', sample.shape)
             dec_sample = model.decode(sample.view(1, sample.shape[0], sample.shape[1]))
-            print('dec_sample', dec_sample.shape)
             dec_sample = dec_sample.view((-1,))
-            dec_sample = dec_sample[:-31]
+            dec_sample = dec_sample[:-padding]
             dec_sample /= 0.6930342789347619
+            device = torch.device('cpu') # do rest on cpu to ensure it fits on ram in gpu
+            dec_sample = dec_sample.to(device)
             if remove_indx:
                 # add the index again
-                index = torch.load('/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/src/ldm_autoencoder/cache/indx_same_std.pt')
-                values = torch.load('/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/src/ldm_autoencoder/cache/elements_same_std.pt')
-                result_tensor = torch.zeros(dec_sample.size(0) + len(index), dtype=dec_sample.dtype)
-                result_indices = torch.arange(result_tensor.size(0))
-                insert_mask = torch.zeros_like(result_indices, dtype=torch.bool)
+                index = torch.load('/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/src/ldm_autoencoder/cache/indx_same_std.pt').to(device)
+                values = torch.load('/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/src/ldm_autoencoder/cache/elements_same_std.pt').to(device)
+                result_tensor = torch.zeros(dec_sample.size(0) + len(index), dtype=dec_sample.dtype).to(device)
+                result_indices = torch.arange(result_tensor.size(0)).to(device)
+                insert_mask = torch.zeros_like(result_indices, dtype=torch.bool).to(device)
                 insert_mask[index] = True
                 result_tensor[insert_mask] = values
                 result_tensor[~insert_mask] = dec_sample
@@ -246,17 +250,22 @@ def generate_during_training(model, samples, epoch, device, wandb_logger, variat
         else: 
             sample *= 0.6930342789347619
             sample = sample.view(1, 1, sample.shape[0])
-            sample_padded = torch.nn.functional.pad(sample,  (0,31)).to(device)
+            sample_padded = torch.nn.functional.pad(sample, (0,padding)).to(device)
             enc_sample, posterior = model(sample_padded, sample_posterior=variational)
             #mse = torch.nn.functional.mse_loss(sample_padded, enc_sample)
             enc_sample = enc_sample.view((-1,))
-            enc_sample = enc_sample[:-31]
+            sample = sample.view((-1,))
+            enc_sample = enc_sample[:-padding]
             enc_sample /= 0.6930342789347619
+            sample /= 0.6930342789347619
+            device = torch.device('cpu') # do rest on cpu to ensure it fits on ram in gpu
+            sample = sample.to(device)
+            enc_sample = enc_sample.to(device)
 
             if remove_indx:
                 # add the index again
-                index = torch.load('/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/src/ldm_autoencoder/cache/indx_same_std.pt')
-                values = torch.load('/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/src/ldm_autoencoder/cache/elements_same_std.pt')
+                index = torch.load('/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/src/ldm_autoencoder/cache/indx_same_std.pt').to(device)
+                values = torch.load('/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/src/ldm_autoencoder/cache/elements_same_std.pt').to(device)
                 # add missing elements to encoded sample
                 result_tensor = torch.zeros(enc_sample.size(0) + len(index), dtype=enc_sample.dtype).to(device)
                 result_indices = torch.arange(result_tensor.size(0)).to(device)
@@ -265,6 +274,7 @@ def generate_during_training(model, samples, epoch, device, wandb_logger, variat
                 result_tensor[insert_mask] = values
                 result_tensor[~insert_mask] = enc_sample
                 enc_sample = result_tensor
+                
                 # add missing elements to real sample
                 result_tensor = torch.zeros(sample.size(0) + len(index), dtype=sample.dtype).to(device)
                 result_indices = torch.arange(result_tensor.size(0)).to(device)

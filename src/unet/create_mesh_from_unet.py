@@ -209,17 +209,46 @@ def main(cfg: DictConfig):
 
 def generate_during_training(model, samples, epoch, device, wandb_logger, remove_indx=None):
 
+    if remove_indx:
+        padding = 21
+    else:
+        padding = 31
     
     for i, sample in enumerate(samples):
         sample *= 0.6930342789347619
         #sample = sample.view(1, 1, sample.shape[0])
-        sample_padded = torch.nn.functional.pad(sample.view((1, -1)),  (0,31)).to(device)
-        print('sample_padded', sample_padded.shape)
+        sample_padded = torch.nn.functional.pad(sample.view((1, -1)),  (0,padding)).to(device)
         enc_sample = model(sample_padded)
         #mse = torch.nn.functional.mse_loss(sample_padded, enc_sample)
         enc_sample = enc_sample.view((-1,))
-        enc_sample = enc_sample[:-31]
+        enc_sample = enc_sample[:-padding]
         enc_sample /= 0.6930342789347619
+        sample /= 0.6930342789347619
+        device = torch.device('cpu') # do rest on cpu to ensure it fits on ram in gpu
+        sample = sample.to(device)
+        enc_sample = enc_sample.to(device)
+
+        if remove_indx:
+            # add the index again
+            index = torch.load('/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/src/ldm_autoencoder/cache/indx_same_std.pt').to(device)
+            values = torch.load('/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/src/ldm_autoencoder/cache/elements_same_std.pt').to(device)
+            # add missing elements to encoded sample
+            result_tensor = torch.zeros(enc_sample.size(0) + len(index), dtype=enc_sample.dtype).to(device)
+            result_indices = torch.arange(result_tensor.size(0)).to(device)
+            insert_mask = torch.zeros_like(result_indices, dtype=torch.bool).to(device)
+            insert_mask[index] = True
+            result_tensor[insert_mask] = values
+            result_tensor[~insert_mask] = enc_sample
+            enc_sample = result_tensor
+            
+            # add missing elements to real sample
+            result_tensor = torch.zeros(sample.size(0) + len(index), dtype=sample.dtype).to(device)
+            result_indices = torch.arange(result_tensor.size(0)).to(device)
+            insert_mask = torch.zeros_like(result_indices, dtype=torch.bool).to(device)
+            insert_mask[index] = True
+            result_tensor[insert_mask] = values
+            result_tensor[~insert_mask] = sample
+            sample = result_tensor
 
         true_img = generate_images_from_VAE(sample)
         pred_img = generate_images_from_VAE(enc_sample)
