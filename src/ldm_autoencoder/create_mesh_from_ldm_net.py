@@ -118,6 +118,7 @@ def main(cfg: DictConfig):
     cfg.filter_bad_path = '../' + cfg.filter_bad_path
     model_file = 'ldm_latent_1149_attention_[2298]_dropout_0.0_lr_0.0001_num_res_3_ch_mult_[1, 4, 8, 16, 32, 128]_normalized_1234.pt'
     model_path = os.path.join('../output_files', model_file)
+    model_path = '/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/our_LDM_Autoencoder/model/models/ldm_latent_1149_attention_[2298]_dropout_0.0_lr_0.0002_num_res_4_ch_mult_[1,+2,+4,+8,+32,+96]_normalizedschedule_exp_capped_0.95_1234.pt'
 
     single_sample_overfit = model_file.startswith('single_sample_overfit')
 
@@ -197,7 +198,6 @@ def main(cfg: DictConfig):
         enc_sample = enc_sample.view((-1,))
         enc_sample = enc_sample[:-31]
         enc_sample /= 0.6930342789347619
-
         
 
         #true_img = generate_images_from_VAE(sample)
@@ -213,16 +213,30 @@ def main(cfg: DictConfig):
                 )
         count += 1
 
-def generate_during_training(model, samples, epoch, device, wandb_logger, variational, distribution):
+def generate_during_training(model, samples, epoch, device, wandb_logger, variational, distribution, remove_indx=None):
 
     
     for i, sample in enumerate(samples):
         if variational:
             sample = distribution.sample()[0]
+            print('distribution', sample.shape)
             dec_sample = model.decode(sample.view(1, sample.shape[0], sample.shape[1]))
+            print('dec_sample', dec_sample.shape)
             dec_sample = dec_sample.view((-1,))
             dec_sample = dec_sample[:-31]
             dec_sample /= 0.6930342789347619
+            if remove_indx:
+                # add the index again
+                index = torch.load('/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/src/ldm_autoencoder/cache/indx_same_std.pt')
+                values = torch.load('/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/src/ldm_autoencoder/cache/elements_same_std.pt')
+                result_tensor = torch.zeros(dec_sample.size(0) + len(index), dtype=dec_sample.dtype)
+                result_indices = torch.arange(result_tensor.size(0))
+                insert_mask = torch.zeros_like(result_indices, dtype=torch.bool)
+                insert_mask[index] = True
+                result_tensor[insert_mask] = values
+                result_tensor[~insert_mask] = dec_sample
+                dec_sample = result_tensor
+                
             pred_img = generate_images_from_VAE(dec_sample)
 
             wandb_logger.log_image(
@@ -238,6 +252,27 @@ def generate_during_training(model, samples, epoch, device, wandb_logger, variat
             enc_sample = enc_sample.view((-1,))
             enc_sample = enc_sample[:-31]
             enc_sample /= 0.6930342789347619
+
+            if remove_indx:
+                # add the index again
+                index = torch.load('/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/src/ldm_autoencoder/cache/indx_same_std.pt')
+                values = torch.load('/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/src/ldm_autoencoder/cache/elements_same_std.pt')
+                # add missing elements to encoded sample
+                result_tensor = torch.zeros(enc_sample.size(0) + len(index), dtype=enc_sample.dtype).to(device)
+                result_indices = torch.arange(result_tensor.size(0)).to(device)
+                insert_mask = torch.zeros_like(result_indices, dtype=torch.bool).to(device)
+                insert_mask[index] = True
+                result_tensor[insert_mask] = values
+                result_tensor[~insert_mask] = enc_sample
+                enc_sample = result_tensor
+                # add missing elements to real sample
+                result_tensor = torch.zeros(sample.size(0) + len(index), dtype=sample.dtype).to(device)
+                result_indices = torch.arange(result_tensor.size(0)).to(device)
+                insert_mask = torch.zeros_like(result_indices, dtype=torch.bool).to(device)
+                insert_mask[index] = True
+                result_tensor[insert_mask] = values
+                result_tensor[~insert_mask] = sample
+                sample = result_tensor
 
             true_img = generate_images_from_VAE(sample)
             pred_img = generate_images_from_VAE(enc_sample)

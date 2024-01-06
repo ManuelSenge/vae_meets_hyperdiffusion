@@ -48,7 +48,7 @@ def main(cfg: DictConfig):
     print('create model..')
     config_model = OmegaConf.load('./model/autoencoder_kl_8x8x64.yaml')
 
-    BS = 32
+    BS = 8
     SEED = 1234
     N_EPOCHS = 800
     warmup_epochs = 10
@@ -83,6 +83,7 @@ def main(cfg: DictConfig):
     
     device = "auto"
     log_wandb = 1
+    remove_indx = False
 
     if device == 'auto':
         if torch.cuda.is_available():
@@ -169,7 +170,8 @@ def main(cfg: DictConfig):
             0,
             mlp_kwargs,
             cfg,
-            train_object_names
+            train_object_names,
+            remove_indx=remove_indx
         )
 
         nets = [oai_coeff_dataset[i][0] for i in range(len(oai_coeff_dataset.mlp_files))]
@@ -188,7 +190,8 @@ def main(cfg: DictConfig):
         mlp_kwargs,
         cfg,
         train_object_names,
-        normalize=normalizing_constant
+        normalize=normalizing_constant,
+        remove_indx=remove_indx
     )
 
     train_dl = None
@@ -203,10 +206,10 @@ def main(cfg: DictConfig):
     else: 
         train_dl = DataLoader(
             train_dt,
-            batch_size=Config.get("batch_size"),
+            batch_size=BS,
             shuffle=True,
             num_workers=1,
-            pin_memory=True,
+            pin_memory=True
         )
 
     val_dt = WeightDataset(
@@ -217,11 +220,12 @@ def main(cfg: DictConfig):
         cfg,
         val_object_names,
         normalize=normalizing_constant,
+        remove_indx=remove_indx
     )
 
     val_dl = DataLoader(
         val_dt,
-        batch_size=Config.get("batch_size"),
+        batch_size=BS,
         shuffle=True,
         num_workers=1,
         pin_memory=True,
@@ -234,12 +238,13 @@ def main(cfg: DictConfig):
         mlp_kwargs,
         cfg,
         test_object_names,
-        normalize=normalizing_constant
+        normalize=normalizing_constant,
+        remove_indx=remove_indx
     )
 
     test_dl = DataLoader(
         test_dt,
-        batch_size=Config.get("batch_size"),
+        batch_size=BS,
         shuffle=True,
         num_workers=1,
         pin_memory=True,
@@ -249,9 +254,6 @@ def main(cfg: DictConfig):
     test_sampels = []
     for i in range(generate_n_meshes):
         test_sampels.append(test_dt.__getitem__(i+1)[0]) # skip first one as its bad
-
-    # create model loss and optimizer
-    #model = VariationalAutoencoder(latent_dims=512, device=device)
 
     loss_config = config_model.model.params.lossconfig
     ddconfig = config_model.model.params.ddconfig
@@ -309,7 +311,7 @@ def main(cfg: DictConfig):
         val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, variational=variational, normalizing_constant=normalizing_constant)
         if log_wandb and epoch%generate_every_n_epochs==0:
             distribution = model.posterior if variational else None
-            generate_during_training(model, samples=test_sampels, epoch=epoch, device=device, wandb_logger=wandb_logger, variational=variational, distribution=distribution)
+            generate_during_training(model, samples=test_sampels, epoch=epoch, device=device, wandb_logger=wandb_logger, variational=variational, distribution=distribution, remove_indx=remove_indx)
         end_time = time.time()
 
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
@@ -332,7 +334,6 @@ def main(cfg: DictConfig):
                         "epoch": epoch,}
             )
             
-
 
         print(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s | LR: {lr_scheduler.get_last_lr()[0]}')
         print(f'\t Train MSE Loss: {train_mse_loss:.3f} Train KL Loss: {train_kl_loss:.3f}')

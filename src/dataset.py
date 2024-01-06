@@ -146,9 +146,10 @@ class VoxelDataset(Dataset):
 
 class WeightDataset(Dataset):
     def __init__(
-        self, mlps_folder, wandb_logger, model_dims, mlp_kwargs, cfg, object_names=None, normalize=1
+        self, mlps_folder, wandb_logger, model_dims, mlp_kwargs, cfg, object_names=None, normalize=1, remove_indx=False
     ):
         self.mlps_folder = mlps_folder
+        self.remove_indx = remove_indx
         self.condition = cfg.transformer_config.params.condition
         files_list = list(os.listdir(mlps_folder))
         blacklist = {}
@@ -243,7 +244,18 @@ class WeightDataset(Dataset):
 
         weights = weights * self.normalize
 
+        # remove indices
+        if self.remove_indx:
+            idx_remove = torch.load('/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/src/ldm_autoencoder/cache/indx_same_std.pt')
+            mask = torch.ones(weights.type(torch.float32).numel(), dtype=torch.bool)
+            mask[idx_remove] = False
+            deleted_weights =  weights.type(torch.float32)[mask]
+            weights = deleted_weights
+
+
         return weights.type(torch.float32), weights_prev.type(torch.float32), weights_prev.type(torch.float32)
 
     def __len__(self):
         return len(self.mlp_files)
+
+    

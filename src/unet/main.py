@@ -15,6 +15,7 @@ import random
 import numpy as np
 import sys
 sys.path.append('../')
+from create_mesh_from_unet import generate_during_training
 from dataset import WeightDataset
 from sampler import SingleInstanceBatchSampler
 from hd_utils import Config
@@ -22,6 +23,7 @@ from omegaconf import DictConfig
 import hydra
 from torchsummary import summary
 import datetime
+from pytorch_lightning.loggers import WandbLogger
 
 # need this seed for the lookup (as data is randomly shuffled)
 random.seed(1234)
@@ -37,6 +39,7 @@ def main(cfg: DictConfig):
     cfg.filter_bad_path = '../' + cfg.filter_bad_path
     
     output_dir = '/hyperdiffusion/output_files'
+    output_dir = '/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/output_files'
     attention_encoder = "0000"
     attention_decoder = attention_encoder[::-1]
     BS = 32
@@ -49,15 +52,18 @@ def main(cfg: DictConfig):
     variational = False
     normalize = True
     learning_rate = 0.0002
-    attention_resolutions  = [8, 16]
-    # attention_resolutions  = []
+    #attention_resolutions  = [8, 16]
+    attention_resolutions  = []
     dropout = 0.2
     num_res_blocks = 3
     channel_mult = [1, 4, 8, 16, 32]
     single_sample_overfit = False
+    generate_every_n_epochs = 100
+    generate_n_meshes = 1
+    remove_indx = False
 
     device = "auto"
-    lob_wandb = 1
+    log_wandb = 1
     if device == 'auto':
         if torch.cuda.is_available():
             device = torch.device('cuda')
@@ -79,15 +85,14 @@ def main(cfg: DictConfig):
     random.seed(SEED)
     np.random.seed(SEED)
 
-    
 
-    if lob_wandb:
+    if log_wandb:
         project = "UNet"
 
         wandb.init( project=project,
                     entity="adl-cv",
                     name=f'first_test_{run_params_name}',
-                    group=f'first_test',
+                    group=f'Manuel_test',
                     config={
                     "latent_attention": True,
                     "attention_resolutions": attention_resolutions,
@@ -102,6 +107,7 @@ def main(cfg: DictConfig):
                     "adam_betas": adam_betas,
                     "normalize": normalize
                     })
+        wandb_logger = WandbLogger()
 
     dataset_path = os.path.join('..', Config.config["dataset_dir"], Config.config["dataset"])
 
@@ -148,7 +154,8 @@ def main(cfg: DictConfig):
         mlp_kwargs,
         cfg,
         train_object_names,
-        normalize=normalizing_constant
+        normalize=normalizing_constant,
+        remove_indx=remove_indx
     )
 
     train_dl = None
@@ -163,7 +170,7 @@ def main(cfg: DictConfig):
     else: 
         train_dl = DataLoader(
             train_dt,
-            batch_size=Config.get("batch_size"),
+            batch_size=BS,
             shuffle=True,
             num_workers=1,
             pin_memory=True,
@@ -178,12 +185,13 @@ def main(cfg: DictConfig):
         mlp_kwargs,
         cfg,
         val_object_names,
-        normalize=normalizing_constant
+        normalize=normalizing_constant,
+        remove_indx=remove_indx
     )
 
     val_dl = DataLoader(
         val_dt,
-        batch_size=Config.get("batch_size"),
+        batch_size=BS,
         shuffle=True,
         num_workers=1,
         pin_memory=True,
@@ -197,20 +205,25 @@ def main(cfg: DictConfig):
         mlp_kwargs,
         cfg,
         test_object_names,
-        normalize=normalizing_constant
+        normalize=normalizing_constant,
+        remove_indx=remove_indx
     )
 
     test_dl = DataLoader(
         test_dt,
-        batch_size=Config.get("batch_size"),
+        batch_size=BS,
         shuffle=True,
         num_workers=1,
         pin_memory=True,
         drop_last=True
     )
 
+    # get test samples for generation meshes
+    test_sampels = []
+    for i in range(generate_n_meshes):
+        test_sampels.append(test_dt.__getitem__(i+1)[0]) # skip first one as its bad
+
     # create model loss and optimizer
-    #model = VariationalAutoencoder(latent_dims=512, device=device)
     print('create model..')
     model = UNetModel(image_size=36744, 
                     in_channels=1, 
@@ -252,10 +265,12 @@ def main(cfg: DictConfig):
         start_time = time.time()
         train_mse_loss, train_kl_loss = train(model, train_dl, optimizer, loss, device, epoch <= warmup_epochs, variational=variational)
         val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, variational=variational)
+        if log_wandb and epoch%generate_every_n_epochs==0:
+            generate_during_training(model, samples=test_sampels, epoch=epoch, device=device, wandb_logger=wandb_logger, remove_indx=remove_indx)
         end_time = time.time()
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
 
-        if lob_wandb:
+        if log_wandb:
             wandb.log({"train/mse_loss": train_mse_loss/normalizing_constant, "train/kl_loss": train_kl_loss,\
                 "val/mse_loss": val_mse_loss /normalizing_constant, "val/kl_loss":val_kl_loss})
 
@@ -263,7 +278,7 @@ def main(cfg: DictConfig):
             best_valid_loss = val_mse_loss+val_kl_loss
             torch.save(model.state_dict(), f"{output_dir}/{output_file}.pt")
 
-            if lob_wandb:
+            if log_wandb:
                 wandb.save(f"{output_dir}/{output_file}.pt", policy="now")
 
         print(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s')
@@ -289,7 +304,7 @@ def main(cfg: DictConfig):
     model.load_state_dict(torch.load(f"{output_dir}/{output_file}.pt"))
     test_mse_loss, test_kl_loss = evaluate(model, test_dl, loss, device, variational=variational)
 
-    if lob_wandb:
+    if log_wandb:
         wandb.log({"test/mse_loss": test_mse_loss, "test/kl_loss":test_kl_loss})
 
     print(f'Test MSE Loss: {test_mse_loss:.3f} Test KL Loss: {test_kl_loss:.3f}')
