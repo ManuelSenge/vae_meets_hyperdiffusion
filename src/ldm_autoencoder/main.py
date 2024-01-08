@@ -51,7 +51,8 @@ def main(cfg: DictConfig):
     config_model = OmegaConf.load('./model/autoencoder_kl_8x8x64.yaml')
 
     # base params
-    BS = 32
+    BS = Config.get("batch_size")
+    ACC_GRAD_BATCHES = Config.get("accumulate_grad_batches")
     SEED = 1234
     N_EPOCHS = 3000
     variational = False
@@ -71,8 +72,8 @@ def main(cfg: DictConfig):
 
     # scheduling params
     min_lr = learning_rate / 100
-    single_sample_overfit = False
-    single_sample_overfit_index = 1
+    single_sample_overfit = True
+    single_sample_overfit_index = 2
 
     scheduler = None
 
@@ -168,6 +169,7 @@ def main(cfg: DictConfig):
                     config={
                     "learning_rate": learning_rate,
                     "batch_size": BS,
+                    "accumulate_grad_batches": ACC_GRAD_BATCHES,
                     "SEED": SEED,
                     "epochs": N_EPOCHS,
                     "normalize": normalize,
@@ -387,7 +389,7 @@ def main(cfg: DictConfig):
             ]
         else:
             epoch_betas = None
-        train_mse_loss, train_kl_loss, posterior = train(model, train_dl, optimizer, loss, device, epoch < warmup_epochs, epoch_betas, variational=variational, normalizing_constant=normalizing_constant, remove_std_zero_indices = remove_std_zero_indices)
+        train_mse_loss, train_kl_loss, posterior = train(model, train_dl, ACC_GRAD_BATCHES, optimizer, loss, device, epoch < warmup_epochs, epoch_betas, variational=variational, normalizing_constant=normalizing_constant, remove_std_zero_indices = remove_std_zero_indices)
         val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, variational=variational, normalizing_constant=normalizing_constant, remove_std_zero_indices = remove_std_zero_indices)
         if log_wandb and epoch%generate_every_n_epochs==0:
             distribution = model.posterior if variational else None
