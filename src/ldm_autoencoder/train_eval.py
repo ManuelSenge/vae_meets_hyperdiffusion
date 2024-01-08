@@ -11,12 +11,12 @@ def train(model, iterator, acc_grad_batches, optimizer, loss, device, warmup, be
         padding = 31
 
     model.train()
+    optimizer.zero_grad() # clear grads
     for i, batch in enumerate(iterator): # batch is simply a batch of ci-matricies as a tensor as x and y are the same 
         # attention_mask, base_ids are already on device
         weights, weights_prev, weights_prev = batch
         weights = weights.view(weights.shape[0], 1, weights.shape[1])
         weights = torch.nn.functional.pad(weights, (0, padding)).to(device)
-        optimizer.zero_grad() # clear gradients first
 
         predictions, posterior = model(weights, sample_posterior=variational)
 
@@ -31,6 +31,7 @@ def train(model, iterator, acc_grad_batches, optimizer, loss, device, warmup, be
 
         if ((i+1) % acc_grad_batches == 0) or (i + 1 == len(iterator)): 
             optimizer.step()
+            optimizer.zero_grad() # clear gradients after every step
         
         epoch_loss_val_mse += loss_val_mse.item()
         epoch_loss_val_kl += loss_val_kl.item()
