@@ -388,6 +388,9 @@ class Encoder(nn.Module):
 
         curr_res = resolution
         in_ch_mult = (1,)+tuple(ch_mult)
+
+        attn_layers_cnt = 0
+
         self.in_ch_mult = in_ch_mult
         self.down = nn.ModuleList()
         for i_level in range(self.num_resolutions):
@@ -402,6 +405,7 @@ class Encoder(nn.Module):
                                          dropout=dropout))
                 block_in = block_out
                 if curr_res in attn_resolutions:
+                    attn_layers_cnt += 1
                     attn.append(make_attn(block_in, attn_type=attn_type))
             down = nn.Module()
             down.block = block
@@ -410,6 +414,9 @@ class Encoder(nn.Module):
                 down.downsample = Downsample(block_in, resamp_with_conv)
                 curr_res = curr_res // 2
             self.down.append(down)
+
+        if attn_layers_cnt // self.num_res_blocks != len(attn_resolutions):
+            raise ValueError(f"Didn't find some of {attn_resolutions}.")
 
         # middle
         self.mid = nn.Module()

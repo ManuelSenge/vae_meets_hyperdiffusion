@@ -25,6 +25,7 @@ from functools import partial
 from enum import Enum
 from create_mesh_from_ldm_net import generate_during_training
 from pytorch_lightning.loggers import WandbLogger
+from datetime import datetime
 # need this seed for the lookup (as data is randomly shuffled)
 random.seed(1234)
 np.random.seed(1234)
@@ -42,25 +43,43 @@ class ScheduleType(Enum):
 def main(cfg: DictConfig):
     Config.config = cfg
     cfg.filter_bad_path = '../' + cfg.filter_bad_path
-    output_dir = '/Users/manuelsenge/Documents/TUM/Semester_3/ADL4CV/workspace/HyperDiffusion/output_files'
+    output_dir = '../output_files'
+    
 
     # this is whats actually used
     print('create model..')
     config_model = OmegaConf.load('./model/autoencoder_kl_8x8x64.yaml')
 
+    # base params
     BS = 32
     SEED = 1234
-    N_EPOCHS = 800
-    warmup_epochs = 10
-    normalize = True
+    N_EPOCHS = 3000
+    variational = False
     learning_rate = 0.0002
+
+    # variational params
+    warmup_epochs = 100 if variational else 0
+    beta = 0.000001 if variational else 1
+
+    # normalization params
+    normalize = True
+
+    # reduced weight input params
+    remove_std_zero_indices = True
+    removed_std_indices_path = '../data/std_zero_indices_planes.pt'
+    assert not (remove_std_zero_indices and removed_std_indices_path is None)
+
+    # scheduling params
     min_lr = learning_rate / 100
     single_sample_overfit = False
     single_sample_overfit_index = 1
 
-    scheduler = ScheduleType.CYCLIC    
-    generate_every_n_epochs = 1
-    generate_n_meshes = 2
+    scheduler = None
+
+    # generation params
+    generate_every_n_epochs = 50
+    generate_n_meshes = 3
+    good_generation_indices = [1,3,4,9,10,12,13,14,16,21,24,28]
 
     if scheduler == ScheduleType.EXP_CAPPED:
         scheduler_exp_mult = 0.95
@@ -98,32 +117,54 @@ def main(cfg: DictConfig):
     num_res = ae_params.num_res_blocks
     ch_mult = ae_params.ch_mult
 
-    run_params_name = f'ldm_latent_1149_attention_{attention_resolutions}_dropout_{dropout}_lr_{learning_rate}_num_res_{num_res}_ch_mult_{ch_mult}' #f'bn_lr{learning_rate}_E{attention_encoder}_num_att_layers{num_att_layers}_enc_chans{wandb_enc_channels}_enc_kernel_sizes{wandb_enc_kernel_sizes}_warmup_epochs{warmup_epochs}'
+
+    removed_std_indices = None
+    if remove_std_zero_indices:
+        removed_std_indices = torch.load(removed_std_indices_path)
+        embed_dim = 1034
+        resolution=33088
+    else:
+        embed_dim = 1149
+        resolution=36768
+
+    run_params_name = f'ldm_latent_{embed_dim}_attention_{attention_resolutions}_dropout_{dropout}_lr_{learning_rate}_num_res_{num_res}_ch_mult_{ch_mult}' #f'bn_lr{learning_rate}_E{attention_encoder}_num_att_layers{num_att_layers}_enc_chans{wandb_enc_channels}_enc_kernel_sizes{wandb_enc_kernel_sizes}_warmup_epochs{warmup_epochs}'
     
     if normalize:
         run_params_name += '_normalized'
+
+    if remove_std_zero_indices:
+        run_params_name = 'rmv_ind_' + run_params_name
 
     if single_sample_overfit:
         run_params_name = f'single_sample_overfit_index_{single_sample_overfit_index}_' + run_params_name
 
     if scheduler is not None:
-        run_params_name += f'schedule_{scheduler}'
+        run_params_name += f'_schedule_{scheduler}'
 
+    if warmup_epochs > 0:
+        run_params_name += f'_warmup_{warmup_epochs}'
+
+    if beta:
+        run_params_name += f'beta_{beta}'
+
+    today = datetime.now().strftime('%Y-%m-%d')
     output_file = f'{run_params_name}_{SEED}'
     
     use_checkpoint = False
 
     checkpoint_path = f"{output_dir}/cp_{output_file}.pt"
+    if use_checkpoint:
+        print(f"Using checkpoint: {checkpoint_path}")
     random.seed(SEED)
     np.random.seed(SEED)
-
+    
 
     if log_wandb:
-        project = "LDM"
+        project = "LDM_VAE" if variational else "LDM"
 
         wandb.init( project=project,
                     entity="adl-cv",
-                    name='test',#f'{run_params_name}',
+                    name=f'{run_params_name}',
                     config={
                     "learning_rate": learning_rate,
                     "batch_size": BS,
@@ -135,10 +176,13 @@ def main(cfg: DictConfig):
                     "single_sample_overfit_index": single_sample_overfit_index if single_sample_overfit else -1,
                     "dropout": dropout,
                     "num_res_block": num_res,
-                    "latent": 1149,
+                    "latent": embed_dim,
                     "attn_resolutions":  attention_resolutions,
                     "lr_scheduler": scheduler_string,
-                    "use_checkpoint": use_checkpoint
+                    "use_checkpoint": use_checkpoint,
+                    "warmup_epochs": warmup_epochs,
+                    "beta": beta,
+                    "remove_std_zero_indices": remove_std_zero_indices
                     })
         wandb_logger = WandbLogger()
 
@@ -188,7 +232,9 @@ def main(cfg: DictConfig):
         mlp_kwargs,
         cfg,
         train_object_names,
-        normalize=normalizing_constant
+        normalize=normalizing_constant,
+        remove_std_zero_indices=remove_std_zero_indices,
+        removed_std_indices=removed_std_indices
     )
 
     train_dl = None
@@ -217,6 +263,8 @@ def main(cfg: DictConfig):
         cfg,
         val_object_names,
         normalize=normalizing_constant,
+        remove_std_zero_indices=remove_std_zero_indices,
+        removed_std_indices=removed_std_indices
     )
 
     val_dl = DataLoader(
@@ -234,7 +282,9 @@ def main(cfg: DictConfig):
         mlp_kwargs,
         cfg,
         test_object_names,
-        normalize=normalizing_constant
+        normalize=normalizing_constant,
+        remove_std_zero_indices=remove_std_zero_indices,
+        removed_std_indices=removed_std_indices
     )
 
     test_dl = DataLoader(
@@ -245,18 +295,38 @@ def main(cfg: DictConfig):
         pin_memory=True,
     )
 
+    iter_per_epoch = len(train_dl)
+    total_annealing_iterations = iter_per_epoch * (N_EPOCHS - warmup_epochs)
+
+    betas = None
+
+    if betas is None:
+        betas = [beta] * total_annealing_iterations
+
     # get test samples for generation meshes
-    test_sampels = []
-    for i in range(generate_n_meshes):
-        test_sampels.append(test_dt.__getitem__(i+1)[0]) # skip first one as its bad
+    gen_sample_indices = []
+    if single_sample_overfit:
+        print("Using single sample overfit index for generation:", single_sample_overfit_index)
+        for i in range(generate_n_meshes):
+            gen_sample_indices.append(single_sample_overfit_index)
+        gen_dataset = train_dt
+    else:
+        for i in range(1, generate_n_meshes+1): # skip first one as its bad
+            gen_sample_indices.append(i)
+        gen_dataset = train_dt # skip first one as its bad
 
     # create model loss and optimizer
     #model = VariationalAutoencoder(latent_dims=512, device=device)
 
     loss_config = config_model.model.params.lossconfig
     ddconfig = config_model.model.params.ddconfig
-    model = AutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=1149)
-    variational = ddconfig['variational']
+
+    # we use ddconfig inside the model so we need to make sure this aligns on both sides
+    assert variational == ddconfig['variational'], "Make sure that ddconfig and main function both have same variational value"
+    assert resolution == ddconfig['resolution'], "Make sure that ddconfig and main function both have same resolution value"
+
+    model = AutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=embed_dim)
+
     # loss = model.loss
 
     loss = VAELoss(autoencoder=None)
@@ -298,6 +368,8 @@ def main(cfg: DictConfig):
     else:
         start_epoch = 0
         best_val_loss = 100000
+
+    removed_std_values = train_dt.get_removed_std_values()
     
     
     print(f'start training..')
@@ -305,11 +377,31 @@ def main(cfg: DictConfig):
 
     for epoch in range(start_epoch, N_EPOCHS):
         start_time = time.time()
-        train_mse_loss, train_kl_loss, posterior = train(model, train_dl, optimizer, loss, device, epoch <= warmup_epochs, variational=variational, normalizing_constant=normalizing_constant)
-        val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, variational=variational, normalizing_constant=normalizing_constant)
+        if epoch >= warmup_epochs:
+            if epoch == warmup_epochs:
+                print("Warmup over.")
+            epoch_betas = betas[
+                (epoch - warmup_epochs)
+                * iter_per_epoch : (epoch - warmup_epochs + 1)
+                * iter_per_epoch
+            ]
+        else:
+            epoch_betas = None
+        train_mse_loss, train_kl_loss, posterior = train(model, train_dl, optimizer, loss, device, epoch < warmup_epochs, epoch_betas, variational=variational, normalizing_constant=normalizing_constant, remove_std_zero_indices = remove_std_zero_indices)
+        val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, variational=variational, normalizing_constant=normalizing_constant, remove_std_zero_indices = remove_std_zero_indices)
         if log_wandb and epoch%generate_every_n_epochs==0:
             distribution = model.posterior if variational else None
-            generate_during_training(model, samples=test_sampels, epoch=epoch, device=device, wandb_logger=wandb_logger, variational=variational, distribution=distribution)
+            generate_during_training(model, 
+                                     gen_dataset,
+                                     gen_sample_indices, 
+                                     epoch=epoch, device=device, 
+                                     wandb_logger=wandb_logger, 
+                                     variational=variational, 
+                                     distribution=distribution,
+                                     remove_std_zero_indices=True,
+                                     removed_std_indices=removed_std_indices,
+                                     removed_std_values=removed_std_values
+                                     )
         end_time = time.time()
 
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
@@ -363,7 +455,7 @@ def main(cfg: DictConfig):
 
     # load the best model and test it on the test set
     model.load_state_dict(torch.load(f"{output_dir}/{output_file}.pt"))
-    test_mse_loss, test_kl_loss = evaluate(model, test_dl, loss, device, variational=variational, normalizing_constant=normalizing_constant)
+    test_mse_loss, test_kl_loss = evaluate(model, test_dl, loss, device, variational=variational, normalizing_constant=normalizing_constant, remove_std_zero_indices = remove_std_zero_indices)
 
     if log_wandb:
         wandb.log({"test/mse_loss": test_mse_loss, "test/kl_loss":test_kl_loss})

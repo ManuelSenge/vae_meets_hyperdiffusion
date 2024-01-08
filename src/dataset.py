@@ -146,10 +146,15 @@ class VoxelDataset(Dataset):
 
 class WeightDataset(Dataset):
     def __init__(
-        self, mlps_folder, wandb_logger, model_dims, mlp_kwargs, cfg, object_names=None, normalize=1
+        self, mlps_folder, wandb_logger, model_dims, mlp_kwargs, cfg, object_names=None, normalize=1, remove_std_zero_indices=False, removed_std_indices=None
     ):
         self.mlps_folder = mlps_folder
         self.condition = cfg.transformer_config.params.condition
+
+        assert not remove_std_zero_indices or (remove_std_zero_indices and removed_std_indices is not None)
+        self.remove_std_zero_indices = remove_std_zero_indices
+        self.removed_std_indices = removed_std_indices
+
         files_list = list(os.listdir(mlps_folder))
         blacklist = {}
         if cfg.filter_bad:
@@ -183,6 +188,37 @@ class WeightDataset(Dataset):
             ).type(torch.float32)
         else:
             self.first_weights = torch.tensor([0])
+    def get_removed_std_values(self):
+        if not self.remove_std_zero_indices:
+            return None
+
+        file = self.mlp_files[1]
+        dir = join(self.mlps_folder, file)
+        if os.path.isdir(dir):
+            path1 = join(dir, "checkpoints", "model_final.pth")
+            path2 = join(dir, "checkpoints", "model_current.pth")
+            state_dict = torch.load(path1 if os.path.exists(path1) else path2)
+        else:
+            state_dict = torch.load(dir, map_location=torch.device("cpu"))
+
+        weights, weights_prev = self.get_weights(state_dict)
+
+        if self.cfg.augment == "inter":
+            other_index = np.random.choice(len(self.mlp_files))
+            other_dir = join(self.mlps_folder, self.mlp_files[other_index])
+            other_state_dict = torch.load(other_dir)
+            other_weights, _ = self.get_weights(other_state_dict)
+            lerp_alpha = np.random.uniform(
+                low=0, high=self.cfg.augment_amount
+            )  # Prev: 0.3
+            weights = torch.lerp(weights, other_weights, lerp_alpha)
+
+        weights = weights * self.normalize
+        mask = torch.zeros(weights.type(torch.float32).numel(), dtype=torch.bool)
+        mask[self.removed_std_indices] = True
+        deleted_weight_values =  weights.type(torch.float32)[mask]
+        return deleted_weight_values
+
 
 
     def get_weights(self, state_dict):
@@ -242,6 +278,12 @@ class WeightDataset(Dataset):
             weights = torch.lerp(weights, other_weights, lerp_alpha)
 
         weights = weights * self.normalize
+
+        if self.remove_std_zero_indices:
+            mask = torch.ones(weights.type(torch.float32).numel(), dtype=torch.bool)
+            mask[self.removed_std_indices] = False
+            not_deleted_weights =  weights.type(torch.float32)[mask]
+            weights = not_deleted_weights
 
         return weights.type(torch.float32), weights_prev.type(torch.float32), weights_prev.type(torch.float32)
 
