@@ -72,7 +72,7 @@ def main(cfg: DictConfig):
 
     # scheduling params
     min_lr = learning_rate / 100
-    single_sample_overfit = True
+    single_sample_overfit = False
     single_sample_overfit_index = 2
 
     scheduler = None
@@ -122,7 +122,7 @@ def main(cfg: DictConfig):
     removed_std_indices = None
     if remove_std_zero_indices:
         removed_std_indices = torch.load(removed_std_indices_path)
-        embed_dim = 1034
+        embed_dim = 517
         resolution=33088
     else:
         embed_dim = 1149
