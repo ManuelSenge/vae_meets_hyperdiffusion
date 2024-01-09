@@ -19,6 +19,7 @@ from dataset import WeightDataset
 from hd_utils import Config
 from omegaconf import DictConfig
 from model.ldm.modules.autoencoder import AutoencoderKL
+from model.ldm.modules.distributions.distributions import DiagonalGaussianDistribution
 import re
 
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
@@ -118,18 +119,20 @@ def main(cfg: DictConfig):
     Config.config = cfg
     cfg.filter_bad_path = '../' + cfg.filter_bad_path
 
-    model_file = 'single_sample_overfit_index_1_ldm_latent_1149_attention_[2298]_dropout_0.0_lr_0.0002_num_res_3_ch_mult_[1, 4, 8, 16, 32, 128]_normalized_1234.pt'
+    model_file = 'ldm_latent_1149_attention_[2298]_dropout_0.0_lr_0.0002_num_res_3_ch_mult_[1, 2, 4, 8, 16, 64]_normalizedwarmup_100beta_1e-06_1234.pt.test'
     from_checkpoint =True
-
     
-    variational = False
-    remove_std_zero_indices = True
+    variational = True
+    remove_std_zero_indices = False
+    var_sample_count = 5
 
     single_sample_overfit = model_file.startswith('single_sample_overfit')
     if from_checkpoint:
         model_file = 'cp_' + model_file
         
     model_path = os.path.join('../output_files', model_file)
+
+    posterior_path_no_checkpoint = os.path.join('../output_files', 'posterior_' + model_file)
 
     single_sample_overfit_index = None
     if single_sample_overfit:
@@ -191,9 +194,16 @@ def main(cfg: DictConfig):
     model_dict = torch.load(model_path, map_location=device)
     if from_checkpoint:
         model.load_state_dict(model_dict['model_state_dict'])
+        if variational:
+            posterior_params =  model_dict['posterior']
+            posterior = DiagonalGaussianDistribution(posterior_params, variational=True)
         print("Using model at epoch", model_dict['epoch'])
     else:
         model.load_state_dict(model_dict)
+        if variational:
+            posterior_params = torch.load(posterior_path_no_checkpoint)
+            posterior = DiagonalGaussianDistribution(posterior_params, variational=True)
+
     model = model.to(device)
     
     model.eval()
@@ -203,7 +213,7 @@ def main(cfg: DictConfig):
     if log_wandb:
         wandb.init(
                 entity='adl-cv',
-                project="LDM-AE eval",
+                project="LDM-AE eval" if not variational else "LDM_VAE eval",
                 name=f"eval_{model_file}",
                 group="Julian"
                 #config={'attention_encoder': attention_encoder, 'num_imgs':num_imgs},
@@ -214,18 +224,22 @@ def main(cfg: DictConfig):
     # num_imgs = 3
         
     padding = 21 if remove_std_zero_indices else 31
-    distribution = None
     removed_std_indices = None
     removed_std_values = None
     train_img_indices = [3,4,9,10,12,13,14,16,21, 24,28] if not single_sample_overfit else [single_sample_overfit_index]
+
+
+    if variational:
+        assert var_sample_count > 0
+
+        train_img_indices = [i for i in range(var_sample_count)]
+
     print("train_img_indices:",  train_img_indices)
     cpu_device = torch.device('cpu')
     for ix in train_img_indices:
 
         if variational:
-            if distribution is None:
-                raise NotImplementedError()
-            sample = distribution.sample()[0]
+            sample = posterior.sample()[ix]
             dec_sample = model.decode(sample.view(1, sample.shape[0], sample.shape[1]))
             dec_sample = dec_sample.view((-1,))
             dec_sample = dec_sample[:-padding]
@@ -262,9 +276,10 @@ def main(cfg: DictConfig):
                     )
         pred_img = generate_images_from_VAE(dec_sample)
         print('pred_img')
-        wandb_logger.log_image(
-                "generated_renders", pred_img, step=count
-            )
+        if log_wandb:
+            wandb_logger.log_image(
+                    "generated_renders", pred_img, step=count
+                )
         count += 1
 
 def _add_removed_indices(sample, removed_indices, removed_values, device):

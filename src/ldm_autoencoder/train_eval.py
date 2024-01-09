@@ -1,7 +1,7 @@
 
 import torch
 
-def train(model, iterator, acc_grad_batches, optimizer, loss, device, warmup, betas, variational, normalizing_constant=1, remove_std_zero_indices = True):
+def train(model, iterator, acc_grad_batches, optimizer, loss, device, warmup, beta, variational, normalizing_constant=1, remove_std_zero_indices = True):
     epoch_loss_val_mse = 0
     epoch_loss_val_kl = 0
 
@@ -25,7 +25,7 @@ def train(model, iterator, acc_grad_batches, optimizer, loss, device, warmup, be
         if warmup or not variational:
             loss_val = loss_val_mse
         else:
-            loss_val = loss_val_mse + betas[i] * loss_val_kl
+            loss_val = loss_val_mse + beta * loss_val_kl
             
         loss_val.backward()
 
@@ -38,7 +38,7 @@ def train(model, iterator, acc_grad_batches, optimizer, loss, device, warmup, be
 
     return epoch_loss_val_mse / (len(iterator) * normalizing_constant), epoch_loss_val_kl / len(iterator), posterior
 
-def evaluate(model, iterator, loss, device, variational, normalizing_constant=1, remove_std_zero_indices = True):
+def evaluate(model, iterator, loss, device, beta, variational, normalizing_constant=1, remove_std_zero_indices = True):
     epoch_loss_val_mse = 0
     epoch_loss_val_kl = 0
 
@@ -60,7 +60,7 @@ def evaluate(model, iterator, loss, device, variational, normalizing_constant=1,
         if not variational:
             loss_val = loss_val_mse
         else:
-            loss_val = loss_val_mse + loss_val_kl
+            loss_val = loss_val_mse + beta * loss_val_kl
   
         epoch_loss_val_mse += loss_val_mse.item()
         epoch_loss_val_kl += loss_val_kl.item()

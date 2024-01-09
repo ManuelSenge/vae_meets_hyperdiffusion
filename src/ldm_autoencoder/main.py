@@ -45,6 +45,7 @@ def main(cfg: DictConfig):
     cfg.filter_bad_path = '../' + cfg.filter_bad_path
     output_dir = '../output_files'
     
+    output_file_overwrite_path = 'ldm_latent_1149_attention_[2298]_dropout_0.0_lr_0.0002_num_res_3_ch_mult_[1, 2, 4, 8, 16, 64]_normalizedwarmup_100beta_1e-06_1234'
 
     # this is whats actually used
     print('create model..')
@@ -55,8 +56,10 @@ def main(cfg: DictConfig):
     ACC_GRAD_BATCHES = Config.get("accumulate_grad_batches")
     SEED = 1234
     N_EPOCHS = 3000
-    variational = False
+    variational = True
     learning_rate = 0.0002
+
+    save_model_every_n_epochs = 1
 
     # variational params
     warmup_epochs = 100 if variational else 0
@@ -66,7 +69,7 @@ def main(cfg: DictConfig):
     normalize = True
 
     # reduced weight input params
-    remove_std_zero_indices = True
+    remove_std_zero_indices = False
     removed_std_indices_path = '../data/std_zero_indices_planes.pt'
     assert not (remove_std_zero_indices and removed_std_indices_path is None)
 
@@ -150,11 +153,15 @@ def main(cfg: DictConfig):
 
     today = datetime.now().strftime('%Y-%m-%d')
     output_file = f'{run_params_name}_{SEED}'
+
+    if output_file_overwrite_path:
+        output_file = output_file_overwrite_path
     
-    use_checkpoint = False
+    use_checkpoint = True
 
     checkpoint_path = f"{output_dir}/cp_{output_file}.pt"
     if use_checkpoint:
+        assert os.path.exists(checkpoint_path), "Checkpoint path not found"
         print(f"Using checkpoint: {checkpoint_path}")
     random.seed(SEED)
     np.random.seed(SEED)
@@ -297,13 +304,6 @@ def main(cfg: DictConfig):
         pin_memory=True,
     )
 
-    iter_per_epoch = len(train_dl)
-    total_annealing_iterations = iter_per_epoch * (N_EPOCHS - warmup_epochs)
-
-    betas = None
-
-    if betas is None:
-        betas = [beta] * total_annealing_iterations
 
     # get test samples for generation meshes
     gen_sample_indices = []
@@ -376,21 +376,15 @@ def main(cfg: DictConfig):
     
     print(f'start training..')
     best_posterior = None
+    posterior = None
 
     for epoch in range(start_epoch, N_EPOCHS):
         start_time = time.time()
         if epoch >= warmup_epochs:
             if epoch == warmup_epochs:
                 print("Warmup over.")
-            epoch_betas = betas[
-                (epoch - warmup_epochs)
-                * iter_per_epoch : (epoch - warmup_epochs + 1)
-                * iter_per_epoch
-            ]
-        else:
-            epoch_betas = None
-        train_mse_loss, train_kl_loss, posterior = train(model, train_dl, ACC_GRAD_BATCHES, optimizer, loss, device, epoch < warmup_epochs, epoch_betas, variational=variational, normalizing_constant=normalizing_constant, remove_std_zero_indices = remove_std_zero_indices)
-        val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, variational=variational, normalizing_constant=normalizing_constant, remove_std_zero_indices = remove_std_zero_indices)
+        train_mse_loss, train_kl_loss, posterior = train(model, train_dl, ACC_GRAD_BATCHES, optimizer, loss, device, epoch < warmup_epochs, beta, variational=variational, normalizing_constant=normalizing_constant, remove_std_zero_indices = remove_std_zero_indices)
+        val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, beta, variational=variational, normalizing_constant=normalizing_constant, remove_std_zero_indices = remove_std_zero_indices)
         if log_wandb and epoch%generate_every_n_epochs==0:
             distribution = model.posterior if variational else None
             generate_during_training(model, 
@@ -440,7 +434,7 @@ def main(cfg: DictConfig):
         
 
         # save model and optimizer every 20 epochs
-        if epoch % 20 == 0:
+        if epoch % save_model_every_n_epochs == 0:
             torch.save({
                         'epoch': epoch,
                         'model_state_dict': model.state_dict(),
@@ -451,13 +445,15 @@ def main(cfg: DictConfig):
                         'val_mse_loss': val_mse_loss,
                         'val_kl_loss': val_kl_loss,
                         'best_val_loss':best_val_loss,
+                        'posterior': posterior.parameters if posterior is not None else None
                         }, checkpoint_path)
             
         lr_scheduler.step()
 
     # load the best model and test it on the test set
     model.load_state_dict(torch.load(f"{output_dir}/{output_file}.pt"))
-    test_mse_loss, test_kl_loss = evaluate(model, test_dl, loss, device, variational=variational, normalizing_constant=normalizing_constant, remove_std_zero_indices = remove_std_zero_indices)
+
+    test_mse_loss, test_kl_loss = evaluate(model, test_dl, loss, device, beta, variational=variational, normalizing_constant=normalizing_constant, remove_std_zero_indices = remove_std_zero_indices)
 
     if log_wandb:
         wandb.log({"test/mse_loss": test_mse_loss, "test/kl_loss":test_kl_loss})

@@ -24,6 +24,7 @@ class DiracDistribution(AbstractDistribution):
 class DiagonalGaussianDistribution(object):
     def __init__(self, parameters, deterministic=False, variational = False):
         self.parameters = parameters
+        self.variational = variational
         if not variational:
             self.mean  = parameters
         else:
@@ -36,6 +37,9 @@ class DiagonalGaussianDistribution(object):
                 self.var = self.std = torch.zeros_like(self.mean).to(device=self.parameters.device)
 
     def sample(self):
+        if not self.variational:
+            raise ValueError("Can not sample if variational=False")
+
         x = self.mean + self.std * torch.randn(self.mean.shape).to(device=self.parameters.device)
         return x
 
