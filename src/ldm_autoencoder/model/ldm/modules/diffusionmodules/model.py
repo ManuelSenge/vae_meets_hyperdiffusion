@@ -368,7 +368,7 @@ class Model(nn.Module):
 class Encoder(nn.Module):
     def __init__(self, *, ch, out_ch, ch_mult=(1,2,4,8), num_res_blocks,
                  attn_resolutions, dropout=0.0, resamp_with_conv=True, in_channels,
-                 resolution, z_channels, double_z=True, use_linear_attn=False, attn_type="vanilla",
+                 resolution, z_channels, double_z=True, use_linear_attn=False, attn_type="vanilla",variational=False,
                  **ignore_kwargs):
         super().__init__()
         if use_linear_attn: attn_type = "linear"
@@ -425,11 +425,18 @@ class Encoder(nn.Module):
 
         # end
         self.norm_out = Normalize(block_in)
+
         self.conv_out = torch.nn.Conv1d(block_in,
-                                        2*z_channels if double_z else z_channels,
+                                        1,
                                         kernel_size=3,
                                         stride=1,
                                         padding=1)
+
+        '''self.conv_out = torch.nn.Conv1d(block_in,
+                                        2*z_channels if double_z else z_channels,
+                                        kernel_size=3,
+                                        stride=1,
+                                        padding=1)'''
 
     def forward(self, x):
         # timestep embedding
@@ -455,7 +462,9 @@ class Encoder(nn.Module):
         # end
         h = self.norm_out(h)
         h = nonlinearity(h)
+        print('h before', h.shape)
         h = self.conv_out(h)
+        print('h after', h.shape)
         return h
 
 
@@ -484,6 +493,7 @@ class Decoder(nn.Module):
             self.z_shape, np.prod(self.z_shape)))
 
         # z to block_in
+        z_channels = 1
         self.conv_in = torch.nn.Conv1d(z_channels,
                                        block_in,
                                        kernel_size=3,

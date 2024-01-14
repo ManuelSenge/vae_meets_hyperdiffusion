@@ -1,6 +1,7 @@
 import torch
 import pytorch_lightning as pl
 import torch.nn.functional as F
+import torch.nn as nn
 from contextlib import contextmanager
 
 from taming.modules.vqvae.quantize import VectorQuantizer#2 as VectorQuantizer
@@ -8,7 +9,6 @@ from taming.modules.vqvae.quantize import VectorQuantizer#2 as VectorQuantizer
 from model.ldm.modules.diffusionmodules.model import Encoder, Decoder
 from model.ldm.modules.distributions.distributions import DiagonalGaussianDistribution
 from model.ldm.util import instantiate_from_config
-
 
 class VQModel(pl.LightningModule):
     def __init__(self,
@@ -290,20 +290,36 @@ class AutoencoderKL(pl.LightningModule):
                  ignore_keys=[],
                  image_key="image",
                  colorize_nlabels=None,
-                 monitor=None,
+                 monitor=None
                  ):
         super().__init__()
+        if torch.cuda.is_available():
+            device = torch.device('cuda')
+        elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+            device = torch.device('mps')
+        else:
+            device = torch.device('cpu')
+
         self.image_key = image_key
         self.encoder = Encoder(**ddconfig)
         self.decoder = Decoder(**ddconfig)
         self.loss = instantiate_from_config(lossconfig)
+
         assert ddconfig["double_z"]
 
         self.variational = ddconfig['variational']
 
         if self.variational:
-            self.quant_conv = torch.nn.Conv1d(2*ddconfig["z_channels"], 2*embed_dim, 1)
-            self.post_quant_conv = torch.nn.Conv1d(embed_dim, ddconfig["z_channels"], 1)
+            self.N = torch.distributions.Normal(0, 1)
+            self.N.loc = self.N.loc.to(device) # hack to get sampling on the GPU
+            self.N.scale = self.N.scale.to(device)
+            self.kl = 0
+
+            self.mu_network = nn.Linear(embed_dim, embed_dim)
+            self.sig_network = nn.Linear(embed_dim, embed_dim)
+
+            #self.quant_conv = torch.nn.Conv1d(2*ddconfig["z_channels"], 2*embed_dim, 1)
+            #self.post_quant_conv = torch.nn.Conv1d(embed_dim, ddconfig["z_channels"], 1)
         else:
             self.quant_conv = torch.nn.Conv1d(2*ddconfig["z_channels"], 2*embed_dim, 1)
             self.post_quant_conv = torch.nn.Conv1d(2*embed_dim, ddconfig["z_channels"], 1)
@@ -329,19 +345,28 @@ class AutoencoderKL(pl.LightningModule):
 
     def encode(self, x):
         h = self.encoder(x)
-        moments = self.quant_conv(h)
-        self.posterior = DiagonalGaussianDistribution(moments, variational=self.variational)
-        return self.posterior
+        h = h.view(-1, self.embed_dim).to(self.device)
+
+        if self.variational:
+            mu =  self.mu_network(h)
+            sigma = torch.exp(self.sig_network(h))
+            z = mu + sigma*self.N.sample(mu.shape)
+            self.kl = (sigma**2 + mu**2 - torch.log(sigma) - 1/2).sum()
+        else:
+            return h
+        return z # shape (BS, latent dim) (8, 1149)
+
     
     def decode(self, z):
-        z = self.post_quant_conv(z)
+        #z = self.post_quant_conv(z)
+        z = z.view(z.shape[0], 1, z.shape[1])
         dec = self.decoder(z)
         return dec
 
     def forward(self, input, sample_posterior=False):
         posterior = self.encode(input)
         if sample_posterior and self.variational: # if not self.variational then we cant sample duh
-            z = posterior.sample()
+            z = posterior
         else:
             z = posterior.mode()
         dec = self.decode(z)

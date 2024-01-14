@@ -82,8 +82,8 @@ def main(cfg: DictConfig):
         raise ValueError(f"Scheduler value {scheduler} not recognized")
     
     device = "auto"
-    log_wandb = 1
-    remove_indx = True
+    log_wandb = 0
+    remove_indx = False
 
     if device == 'auto':
         if torch.cuda.is_available():
