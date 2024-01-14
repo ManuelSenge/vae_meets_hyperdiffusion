@@ -462,9 +462,7 @@ class Encoder(nn.Module):
         # end
         h = self.norm_out(h)
         h = nonlinearity(h)
-        print('h before', h.shape)
         h = self.conv_out(h)
-        print('h after', h.shape)
         return h
 
 
