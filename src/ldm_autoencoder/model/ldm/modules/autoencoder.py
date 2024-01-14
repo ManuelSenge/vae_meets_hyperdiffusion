@@ -314,10 +314,10 @@ class AutoencoderKL(pl.LightningModule):
             self.N.loc = self.N.loc.to(device) # hack to get sampling on the GPU
             self.N.scale = self.N.scale.to(device)
             self.kl = 0
-
-            self.mu_network = nn.Linear(embed_dim, embed_dim)
-            self.sig_network = nn.Linear(embed_dim, embed_dim)
-
+            self.z_channels = ddconfig["z_channels"]
+            self.param_net = torch.nn.Conv1d(2*ddconfig["z_channels"], 2*embed_dim, 1)
+            self.post_quant_conv = torch.nn.Conv1d(embed_dim, ddconfig["z_channels"], 1)
+            
             #self.quant_conv = torch.nn.Conv1d(2*ddconfig["z_channels"], 2*embed_dim, 1)
             #self.post_quant_conv = torch.nn.Conv1d(embed_dim, ddconfig["z_channels"], 1)
         else:
@@ -345,21 +345,27 @@ class AutoencoderKL(pl.LightningModule):
 
     def encode(self, x):
         h = self.encoder(x)
-        h = h.view(-1, self.embed_dim).to(self.device)
 
         if self.variational:
-            mu =  self.mu_network(h)
-            sigma = torch.exp(self.sig_network(h))
-            z = mu + sigma*self.N.sample(mu.shape)
-            self.kl = (sigma**2 + mu**2 - torch.log(sigma) - 1/2).sum()
+            param = self.param_net(h)  # torch.Size([8, 2298, 1149])
+            mu, self.logvar = torch.chunk(param, 2, dim=1) # torch.Size([8, 1149, 1149])
+            std = torch.exp(0.5 * self.logvar)
+            z = mu + std*self.N.sample(mu.shape) # torch.Size([8, 1149, 1149])
+            self.kl = (std**2 + mu**2 - torch.log(std) - 1/2).sum()
         else:
             return h
         return z # shape (BS, latent dim) (8, 1149)
 
-    
+    def sample(self, num_samples):
+        h = self.N.sample((num_samples, self.z_channels, self.embed_dim))
+        param = self.param_net(h)
+        mu, self.logvar = torch.chunk(param, 2, dim=1)
+        std = torch.exp(0.5 * self.logvar)
+        z = mu + std*self.N.sample(mu.shape)
+        return z
+
     def decode(self, z):
-        #z = self.post_quant_conv(z)
-        z = z.view(z.shape[0], 1, z.shape[1])
+        z = self.post_quant_conv(z)
         dec = self.decoder(z)
         return dec
 

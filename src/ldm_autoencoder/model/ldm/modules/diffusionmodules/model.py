@@ -427,16 +427,10 @@ class Encoder(nn.Module):
         self.norm_out = Normalize(block_in)
 
         self.conv_out = torch.nn.Conv1d(block_in,
-                                        1,
-                                        kernel_size=3,
-                                        stride=1,
-                                        padding=1)
-
-        '''self.conv_out = torch.nn.Conv1d(block_in,
                                         2*z_channels if double_z else z_channels,
                                         kernel_size=3,
                                         stride=1,
-                                        padding=1)'''
+                                        padding=1)
 
     def forward(self, x):
         # timestep embedding
@@ -491,7 +485,6 @@ class Decoder(nn.Module):
             self.z_shape, np.prod(self.z_shape)))
 
         # z to block_in
-        z_channels = 1
         self.conv_in = torch.nn.Conv1d(z_channels,
                                        block_in,
                                        kernel_size=3,

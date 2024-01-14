@@ -120,7 +120,7 @@ def main(cfg: DictConfig):
 
 
     if log_wandb:
-        project = "LDM"
+        project = "VLDM"
 
         wandb.init( project=project,
                     entity="adl-cv",
