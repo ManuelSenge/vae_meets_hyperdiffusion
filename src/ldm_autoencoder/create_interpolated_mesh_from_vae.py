@@ -118,19 +118,12 @@ def generate_images_from_VAE(x_0, resolution=420):
 def main(cfg: DictConfig):
     Config.config = cfg
     cfg.filter_bad_path = '../' + cfg.filter_bad_path
-    resolution=500
 
-    model_file = 'rmv_ind_ldm_latent_517_attention_[2068, 1034, 517]_dropout_0.0_lr_0.0002_num_res_9_ch_mult_[4, 8, 16, 32, 64, 128, 256]_normalizedbeta_1_1234.pt'
+    model_file = 'ldm_latent_1149_attention_[2298]_dropout_0.0_lr_0.0002_num_res_3_ch_mult_[1, 2, 4, 8, 16, 64]_normalizedwarmup_100beta_1e-06_1234.pt.test'
     from_checkpoint =True
-    use_validation = True
-    variational = False
+    resolution = 700
+    remove_std_zero_indices = False
     var_sample_count = 5
-    remove_std_zero_indices = True
-    removed_std_indices_path = '../data/std_zero_indices_planes.pt'
-
-    if remove_std_zero_indices:
-        removed_std_indices = torch.load(removed_std_indices_path)
-
 
     single_sample_overfit = model_file.startswith('single_sample_overfit')
     if from_checkpoint:
@@ -161,8 +154,6 @@ def main(cfg: DictConfig):
     test_object_names = set([str.split(".")[0] for str in test_object_names])
     mlps_folder_train = '../' + Config.get("mlps_folder_train")
 
-    print(removed_std_indices)
-
     test_dt = WeightDataset(
         mlps_folder_train,
         None,
@@ -170,9 +161,6 @@ def main(cfg: DictConfig):
         mlp_kwargs,
         cfg,
         test_object_names,
-        1,
-        remove_std_zero_indices,
-        removed_std_indices,
     )
 
     test_dl = DataLoader(
@@ -187,21 +175,7 @@ def main(cfg: DictConfig):
         os.path.join(dataset_path, "train_split.lst"), dtype="str"
     )
     train_object_names = set([str.split(".")[0] for str in train_object_names])
-    val_object_names = np.genfromtxt(
-            os.path.join(dataset_path, "val_split.lst"), dtype="str"
-    )
-    val_object_names = set([str.split(".")[0] for str in val_object_names])
-    val_dt = WeightDataset(
-        mlps_folder_train,
-        None,
-        0,
-        mlp_kwargs,
-        cfg,
-        val_object_names,
-        normalize=1,
-        remove_std_zero_indices=remove_std_zero_indices,
-        removed_std_indices=removed_std_indices
-    )
+
     train_dt = WeightDataset(
         mlps_folder_train,
         None,
@@ -209,30 +183,23 @@ def main(cfg: DictConfig):
         mlp_kwargs,
         cfg,
         train_object_names,
-        1,
-        remove_std_zero_indices,
-        removed_std_indices,
     )
-
-    removed_std_values = train_dt.get_removed_std_values()
 
     config_model = OmegaConf.load('./model/autoencoder_kl_8x8x64.yaml')
     loss_config = config_model.model.params.lossconfig
     ddconfig = config_model.model.params.ddconfig
-    model = AutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=517)
+    model = AutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=1149)
 
     model_dict = torch.load(model_path, map_location=device)
     if from_checkpoint:
         model.load_state_dict(model_dict['model_state_dict'])
-        if variational:
-            posterior_params =  model_dict['posterior']
-            posterior = DiagonalGaussianDistribution(posterior_params, variational=True)
+        posterior_params =  model_dict['posterior']
+        posterior = DiagonalGaussianDistribution(posterior_params, variational=True)
         print("Using model at epoch", model_dict['epoch'])
     else:
         model.load_state_dict(model_dict)
-        if variational:
-            posterior_params = torch.load(posterior_path_no_checkpoint)
-            posterior = DiagonalGaussianDistribution(posterior_params, variational=True)
+        posterior_params = torch.load(posterior_path_no_checkpoint)
+        posterior = DiagonalGaussianDistribution(posterior_params, variational=True)
 
     model = model.to(device)
     
@@ -243,7 +210,7 @@ def main(cfg: DictConfig):
     if log_wandb:
         wandb.init(
                 entity='adl-cv',
-                project="LDM-AE eval" if not variational else "LDM_VAE eval",
+                project="LDM_VAE_Interpolated",
                 name=f"eval_{model_file}",
                 group="Julian"
                 #config={'attention_encoder': attention_encoder, 'num_imgs':num_imgs},
@@ -254,60 +221,43 @@ def main(cfg: DictConfig):
     # num_imgs = 3
         
     padding = 21 if remove_std_zero_indices else 31
-    train_img_indices = [3,4,9,10,12,13,14,16,21, 24,28] if not single_sample_overfit else [single_sample_overfit_index]
-    train_img_indices=[0, 1, 2, 3, 4, 5, 6, 7 ,8, 9, 10, 11, 12]
-    
-
-    if variational:
-        assert var_sample_count > 0
-
-        train_img_indices = [i for i in range(var_sample_count)]
-
-    print("Using validation data" if val_dt else "Using train data")
-    dataset = val_dt if use_validation else train_dt
-    print("train_img_indices:",  train_img_indices)
+    removed_std_indices = None
+    removed_std_values = None
     cpu_device = torch.device('cpu')
-    for ix in train_img_indices:
 
-        if variational:
-            sample = posterior.sample()[ix]
-            dec_sample = model.decode(sample.view(1, sample.shape[0], sample.shape[1]))
-            dec_sample = dec_sample.view((-1,))
-            dec_sample = dec_sample[:-padding]
-            dec_sample /= 0.6930342789347619
-
-            dec_sample = dec_sample.to(cpu_device)
-        else:
-            original_sample, _, _ = dataset.__getitem__(ix)
-            # normalize sample
-            sample = original_sample * 0.6930342789347619
-            sample = sample.view(1, 1, sample.shape[0])
-            sample_padded = torch.nn.functional.pad(sample,  (0,padding)).to(device)
-            dec_sample, posterior = model(sample_padded)
-            dec_sample = dec_sample.view((-1,))
-            dec_sample = dec_sample[:-padding]
-            dec_sample /= 0.6930342789347619
-            dec_sample = dec_sample.to(cpu_device)
-            print("MSE_Loss:", torch.nn.functional.mse_loss(original_sample, dec_sample))
-
+    def _generate_image(sample):
+        dec_sample = model.decode(sample.view(1, sample.shape[0], sample.shape[1]))
+        dec_sample = dec_sample.view((-1,))
+        dec_sample = dec_sample[:-padding]
+        dec_sample /= 0.6930342789347619
+        dec_sample = dec_sample.to(cpu_device)
             
         if remove_std_zero_indices:
-            dec_sample = _add_removed_indices(dec_sample, removed_std_indices, removed_std_values, cpu_device)
-            if not variational:
-                original_sample = _add_removed_indices(original_sample, removed_std_indices, removed_std_values, cpu_device)
-            
-        if not variational:
-            true_img = generate_images_from_VAE(original_sample, resolution=resolution)
-            print('true_img')
-            if log_wandb:
-                wandb_logger.log_image(
-                        "true_renders", true_img, step=count
-                    )
+            if removed_std_indices is None or removed_std_values is None:
+                raise NotImplementedError()
+            dec_sample = _add_removed_indices(dec_sample, removed_std_indices, removed_std_values)
+                    
         pred_img = generate_images_from_VAE(dec_sample, resolution=resolution)
+        return pred_img
+   
+
+    for i in range(var_sample_count):
+
+        sample1 = posterior.sample()[i]
+        sample2 = posterior.sample()[i+1]
+        interpolation = (sample1 + sample2)/2
+
+
+        pred_img_1 = _generate_image(sample1)[0]
+        pred_img_2 = _generate_image(sample2)[0]
+        pred_img_3 = _generate_image(interpolation)[0]
+
+        images = [pred_img_1, pred_img_2, pred_img_3]
+        captions = ['pred_1', 'pred_2', 'interpolation']
         print('pred_img')
         if log_wandb:
             wandb_logger.log_image(
-                    "generated_renders", pred_img, step=count
+                    "images", images, step=count, caption=captions
                 )
         count += 1
 
@@ -320,61 +270,6 @@ def _add_removed_indices(sample, removed_indices, removed_values, device):
     result_tensor[~insert_mask] = sample
     sample = result_tensor
     return sample
-
-def generate_during_training(model, gen_dataset, gen_sample_indices, epoch,
-                            device, wandb_logger, variational, distribution,
-                            remove_std_zero_indices, removed_std_indices, removed_std_values, resolution):
-    
-    padding = 21 if remove_std_zero_indices else 31
-
-    normalizing_constant = gen_dataset.get_normalized_constant()
-
-    print("Generating with normalizing constant ", normalizing_constant)
-
-    cpu_device = torch.device('cpu')
-    for i, sample_index in enumerate(gen_sample_indices):
-
-        original_sample = None
-        if variational:
-            sample = distribution.sample()[0]
-            dec_sample = model.decode(sample.view(1, sample.shape[0], sample.shape[1]))
-            dec_sample = dec_sample.view((-1,))
-            dec_sample = dec_sample[:-padding]
-            dec_sample /= normalizing_constant
-
-            dec_sample = dec_sample.to(cpu_device)
-        else: 
-            original_sample, _, _ = gen_dataset.__getitem__(sample_index)
-            sample = original_sample.view(1, 1, original_sample.shape[0])
-            sample_padded = torch.nn.functional.pad(sample,  (0,padding)).to(device)
-            dec_sample, _ = model(sample_padded)
-            dec_sample = dec_sample.view((-1,))
-
-        
-            dec_sample = dec_sample[:-padding].to(cpu_device)
-            print(f"Generating image... (MSE-Loss: {torch.nn.functional.mse_loss(original_sample, dec_sample)})")
-            dec_sample /= normalizing_constant
-            original_sample /= normalizing_constant
-
-            dec_sample = dec_sample
-
-        
-        if remove_std_zero_indices:
-            dec_sample = _add_removed_indices(dec_sample, removed_std_indices, removed_std_values, device=cpu_device)
-            if not variational:
-                original_sample = _add_removed_indices(original_sample, removed_std_indices, removed_std_values, device=cpu_device)
-
-        pred_img = generate_images_from_VAE(dec_sample, resolution=resolution)
-
-        wandb_logger.log_image(
-                "generated_renders", pred_img, step=epoch*10+i
-        )
-        if not variational:
-            assert original_sample is not None
-            true_img = generate_images_from_VAE(original_sample, resolution=resolution)
-            wandb_logger.log_image(
-                    "true_renders", true_img, step=epoch*10+i
-                )
             
 
 

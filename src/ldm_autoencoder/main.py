@@ -45,7 +45,8 @@ def main(cfg: DictConfig):
     cfg.filter_bad_path = '../' + cfg.filter_bad_path
     output_dir = '../output_files'
     
-    output_file_overwrite_path = 'ldm_latent_1149_attention_[2298]_dropout_0.0_lr_0.0002_num_res_3_ch_mult_[1, 2, 4, 8, 16, 64]_normalizedwarmup_100beta_1e-06_1234'
+    #output_file_overwrite_path = 'ldm_latent_1149_attention_[2298]_dropout_0.0_lr_0.0002_num_res_3_ch_mult_[1, 2, 4, 8, 16, 64]_normalizedwarmup_100beta_1e-06_1234'
+    output_file_overwrite_path = False
 
     # this is whats actually used
     print('create model..')
@@ -56,10 +57,9 @@ def main(cfg: DictConfig):
     ACC_GRAD_BATCHES = Config.get("accumulate_grad_batches")
     SEED = 1234
     N_EPOCHS = 3000
-    variational = True
-    learning_rate = 0.0002
-
-    save_model_every_n_epochs = 1
+    variational = False
+    learning_rate = 0.00005
+    save_model_every_n_epochs = 10
 
     # variational params
     warmup_epochs = 100 if variational else 0
@@ -69,7 +69,7 @@ def main(cfg: DictConfig):
     normalize = True
 
     # reduced weight input params
-    remove_std_zero_indices = False
+    remove_std_zero_indices = True
     removed_std_indices_path = '../data/std_zero_indices_planes.pt'
     assert not (remove_std_zero_indices and removed_std_indices_path is None)
 
@@ -78,11 +78,18 @@ def main(cfg: DictConfig):
     single_sample_overfit = False
     single_sample_overfit_index = 2
 
+    if single_sample_overfit:
+        print(f"Ignoring BS = {BS}. 1 is good enough.")
+        BS = 1
+        ACC_GRAD_BATCHES = 1
+        
+
     scheduler = None
 
     # generation params
-    generate_every_n_epochs = 50
+    generate_every_n_epochs = 30
     generate_n_meshes = 3
+    render_resolution = 400
     good_generation_indices = [1,3,4,9,10,12,13,14,16,21,24,28]
 
     if scheduler == ScheduleType.EXP_CAPPED:
@@ -117,6 +124,11 @@ def main(cfg: DictConfig):
     
     ae_params = config_model.model.params.ddconfig
     attention_resolutions = ae_params.attn_resolutions
+    z_channels = ae_params.z_channels
+    resolution = ae_params.resolution
+    embed_dim = ae_params.embed_dim
+
+
     dropout = ae_params.dropout
     num_res = ae_params.num_res_blocks
     ch_mult = ae_params.ch_mult
@@ -125,11 +137,7 @@ def main(cfg: DictConfig):
     removed_std_indices = None
     if remove_std_zero_indices:
         removed_std_indices = torch.load(removed_std_indices_path)
-        embed_dim = 517
-        resolution=33088
-    else:
-        embed_dim = 1149
-        resolution=36768
+        assert resolution == 33088
 
     run_params_name = f'ldm_latent_{embed_dim}_attention_{attention_resolutions}_dropout_{dropout}_lr_{learning_rate}_num_res_{num_res}_ch_mult_{ch_mult}' #f'bn_lr{learning_rate}_E{attention_encoder}_num_att_layers{num_att_layers}_enc_chans{wandb_enc_channels}_enc_kernel_sizes{wandb_enc_kernel_sizes}_warmup_epochs{warmup_epochs}'
     
@@ -157,7 +165,7 @@ def main(cfg: DictConfig):
     if output_file_overwrite_path:
         output_file = output_file_overwrite_path
     
-    use_checkpoint = True
+    use_checkpoint = False
 
     checkpoint_path = f"{output_dir}/cp_{output_file}.pt"
     if use_checkpoint:
@@ -185,13 +193,15 @@ def main(cfg: DictConfig):
                     "single_sample_overfit_index": single_sample_overfit_index if single_sample_overfit else -1,
                     "dropout": dropout,
                     "num_res_block": num_res,
+                    "z_channels": z_channels,
                     "latent": embed_dim,
                     "attn_resolutions":  attention_resolutions,
                     "lr_scheduler": scheduler_string,
                     "use_checkpoint": use_checkpoint,
                     "warmup_epochs": warmup_epochs,
                     "beta": beta,
-                    "remove_std_zero_indices": remove_std_zero_indices
+                    "remove_std_zero_indices": remove_std_zero_indices,
+                    "output_file": output_file,
                     })
         wandb_logger = WandbLogger()
 
@@ -231,6 +241,7 @@ def main(cfg: DictConfig):
         oai_coeff = 0.538 / stdev # openai coefficient according to G.pt
         print("OAI-Coeff Normalization: ", oai_coeff)
     normalizing_constant = oai_coeff if oai_coeff else 1
+    print(f"Normalizing constant: {normalizing_constant}")
 
     # create dataset and dataloader
     print('create dataset...')
@@ -258,7 +269,7 @@ def main(cfg: DictConfig):
     else: 
         train_dl = DataLoader(
             train_dt,
-            batch_size=Config.get("batch_size"),
+            batch_size=BS,
             shuffle=True,
             num_workers=1,
             pin_memory=True,
@@ -278,7 +289,7 @@ def main(cfg: DictConfig):
 
     val_dl = DataLoader(
         val_dt,
-        batch_size=Config.get("batch_size"),
+        batch_size=BS,
         shuffle=True,
         num_workers=1,
         pin_memory=True,
@@ -298,7 +309,7 @@ def main(cfg: DictConfig):
 
     test_dl = DataLoader(
         test_dt,
-        batch_size=Config.get("batch_size"),
+        batch_size=BS,
         shuffle=True,
         num_workers=1,
         pin_memory=True,
@@ -326,6 +337,8 @@ def main(cfg: DictConfig):
     # we use ddconfig inside the model so we need to make sure this aligns on both sides
     assert variational == ddconfig['variational'], "Make sure that ddconfig and main function both have same variational value"
     assert resolution == ddconfig['resolution'], "Make sure that ddconfig and main function both have same resolution value"
+    assert z_channels == ddconfig['z_channels'], "Make sure that ddconfig and main function both have same z_channels value"
+
 
     model = AutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=embed_dim)
 
@@ -374,7 +387,7 @@ def main(cfg: DictConfig):
     removed_std_values = train_dt.get_removed_std_values()
     
     
-    print(f'start training..')
+    print(f'start training (start epoch: {start_epoch})')
     best_posterior = None
     posterior = None
 
@@ -394,9 +407,10 @@ def main(cfg: DictConfig):
                                      wandb_logger=wandb_logger, 
                                      variational=variational, 
                                      distribution=distribution,
-                                     remove_std_zero_indices=True,
+                                     remove_std_zero_indices=remove_std_zero_indices,
                                      removed_std_indices=removed_std_indices,
-                                     removed_std_values=removed_std_values
+                                     removed_std_values=removed_std_values,
+                                     resolution= render_resolution
                                      )
         end_time = time.time()
 
@@ -411,7 +425,7 @@ def main(cfg: DictConfig):
             #     wandb.save(f"{output_dir}/{output_file}.pt", base_path='/hyperdiffusion')
 
         if log_wandb:
-            wandb.log({"train/mse_loss": train_mse_loss,
+            wandb.log({ "train/mse_loss": train_mse_loss,
                         "train/kl_loss": train_kl_loss,
                         "val/mse_loss": val_mse_loss,
                         "val/kl_loss":val_kl_loss, 

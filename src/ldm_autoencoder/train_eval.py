@@ -32,9 +32,10 @@ def train(model, iterator, acc_grad_batches, optimizer, loss, device, warmup, be
         if ((i+1) % acc_grad_batches == 0) or (i + 1 == len(iterator)): 
             optimizer.step()
             optimizer.zero_grad() # clear gradients after every step
-        
+
         epoch_loss_val_mse += loss_val_mse.item()
         epoch_loss_val_kl += loss_val_kl.item()
+
 
     return epoch_loss_val_mse / (len(iterator) * normalizing_constant), epoch_loss_val_kl / len(iterator), posterior
 
@@ -64,4 +65,6 @@ def evaluate(model, iterator, loss, device, beta, variational, normalizing_const
   
         epoch_loss_val_mse += loss_val_mse.item()
         epoch_loss_val_kl += loss_val_kl.item()
+
+
     return epoch_loss_val_mse / (len(iterator) * normalizing_constant), epoch_loss_val_kl / len(iterator)
