@@ -322,7 +322,7 @@ def _add_removed_indices(sample, removed_indices, removed_values, device):
     return sample
 
 def generate_during_training(model, gen_dataset, gen_sample_indices, epoch,
-                            device, wandb_logger, variational, distribution,
+                            device, wandb_logger, variational,
                             remove_std_zero_indices, removed_std_indices, removed_std_values, resolution):
     
     padding = 21 if remove_std_zero_indices else 31
@@ -336,8 +336,8 @@ def generate_during_training(model, gen_dataset, gen_sample_indices, epoch,
 
         original_sample = None
         if variational:
-            sample = distribution.sample()[0]
-            dec_sample = model.decode(sample.view(1, sample.shape[0], sample.shape[1]))
+            sample = model.sample(1)
+            dec_sample = model.decode(sample)
             dec_sample = dec_sample.view((-1,))
             dec_sample = dec_sample[:-padding]
             dec_sample /= normalizing_constant

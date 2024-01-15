@@ -57,12 +57,12 @@ def main(cfg: DictConfig):
     ACC_GRAD_BATCHES = Config.get("accumulate_grad_batches")
     SEED = 1234
     N_EPOCHS = 3000
-    variational = False
-    learning_rate = 0.00005
+    variational = True
+    learning_rate = 0.0002
     save_model_every_n_epochs = 10
 
     # variational params
-    warmup_epochs = 100 if variational else 0
+    warmup_epochs = 30 if variational else 0
     beta = 0.000001 if variational else 1
 
     # normalization params
@@ -340,7 +340,7 @@ def main(cfg: DictConfig):
     assert z_channels == ddconfig['z_channels'], "Make sure that ddconfig and main function both have same z_channels value"
 
 
-    model = AutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=embed_dim)
+    model = AutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=embed_dim, device=device)
 
     # loss = model.loss
 
@@ -388,25 +388,21 @@ def main(cfg: DictConfig):
     
     
     print(f'start training (start epoch: {start_epoch})')
-    best_posterior = None
-    posterior = None
-
+    
     for epoch in range(start_epoch, N_EPOCHS):
         start_time = time.time()
         if epoch >= warmup_epochs:
             if epoch == warmup_epochs:
                 print("Warmup over.")
-        train_mse_loss, train_kl_loss, posterior = train(model, train_dl, ACC_GRAD_BATCHES, optimizer, loss, device, epoch < warmup_epochs, beta, variational=variational, normalizing_constant=normalizing_constant, remove_std_zero_indices = remove_std_zero_indices)
+        train_mse_loss, train_kl_loss = train(model, train_dl, ACC_GRAD_BATCHES, optimizer, loss, device, epoch < warmup_epochs, beta, variational=variational, normalizing_constant=normalizing_constant, remove_std_zero_indices = remove_std_zero_indices)
         val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, beta, variational=variational, normalizing_constant=normalizing_constant, remove_std_zero_indices = remove_std_zero_indices)
         if log_wandb and epoch%generate_every_n_epochs==0:
-            distribution = model.posterior if variational else None
             generate_during_training(model, 
                                      gen_dataset,
                                      gen_sample_indices, 
                                      epoch=epoch, device=device, 
                                      wandb_logger=wandb_logger, 
                                      variational=variational, 
-                                     distribution=distribution,
                                      remove_std_zero_indices=remove_std_zero_indices,
                                      removed_std_indices=removed_std_indices,
                                      removed_std_values=removed_std_values,
@@ -418,8 +414,6 @@ def main(cfg: DictConfig):
 
         if val_mse_loss+val_kl_loss < best_val_loss:
             best_val_loss = val_mse_loss+val_kl_loss
-            best_posterior = posterior
-            torch.save(best_posterior.parameters, f"{output_dir}/posterior_{output_file}.pt")
             torch.save(model.state_dict(), f"{output_dir}/{output_file}.pt")
             # if log_wandb:
             #     wandb.save(f"{output_dir}/{output_file}.pt", base_path='/hyperdiffusion')
@@ -459,7 +453,6 @@ def main(cfg: DictConfig):
                         'val_mse_loss': val_mse_loss,
                         'val_kl_loss': val_kl_loss,
                         'best_val_loss':best_val_loss,
-                        'posterior': posterior.parameters if posterior is not None else None
                         }, checkpoint_path)
             
         lr_scheduler.step()

@@ -6,8 +6,8 @@ class VAELoss(nn.Module):
         super(VAELoss, self).__init__()
         self.autoencoder = autoencoder
 
-    def forward(self, x, x_pred, variational, posterior=None):
+    def forward(self, x, x_pred, variational, model=None):
         if variational:
-            return ((x - x_pred)**2).mean(), torch.mean(posterior.kl())
+            return ((x - x_pred)**2).mean(), model.kl
         else:
             return ((x - x_pred)**2).mean(), torch.Tensor([0])

@@ -286,6 +286,7 @@ class AutoencoderKL(pl.LightningModule):
                  ddconfig,
                  lossconfig,
                  embed_dim,
+                 device,
                  ckpt_path=None,
                  ignore_keys=[],
                  image_key="image",
@@ -299,14 +300,19 @@ class AutoencoderKL(pl.LightningModule):
         self.loss = instantiate_from_config(lossconfig)
         assert ddconfig["double_z"]
 
+        self.z_channels = ddconfig["z_channels"]
+
         self.variational = ddconfig['variational']
 
         if self.variational:
+            self.N = torch.distributions.Normal(0, 1)
+            self.N.loc = self.N.loc.to(device)
+            self.N.scale = self.N.scale.to(device)
             self.quant_conv = torch.nn.Conv1d(2*ddconfig["z_channels"], 2*embed_dim, 1)
             self.post_quant_conv = torch.nn.Conv1d(embed_dim, ddconfig["z_channels"], 1)
         else:
-            self.quant_conv = torch.nn.Conv1d(2*ddconfig["z_channels"], 2*embed_dim, 1)
-            self.post_quant_conv = torch.nn.Conv1d(2*embed_dim, ddconfig["z_channels"], 1)
+            self.quant_conv = torch.nn.Conv1d(2*ddconfig["z_channels"], embed_dim, 1)
+            self.post_quant_conv = torch.nn.Conv1d(embed_dim, ddconfig["z_channels"], 1)
         self.embed_dim = embed_dim
         if colorize_nlabels is not None:
             assert type(colorize_nlabels)==int
@@ -329,23 +335,35 @@ class AutoencoderKL(pl.LightningModule):
 
     def encode(self, x):
         h = self.encoder(x)
-        moments = self.quant_conv(h)
-        self.posterior = DiagonalGaussianDistribution(moments, variational=self.variational)
-        return self.posterior
+        if self.variational:
+            param = self.quant_conv(h) 
+
+            mu, self.logvar = torch.chunk(param, 2, dim=1)
+            std = torch.exp(0.5 * self.logvar)
+            z = mu + std*self.N.sample(mu.shape)
+            self.kl = (std**2 + mu**2 - torch.log(std) - 1/2).sum()
+            return z
+        else:
+            return self.quant_conv(h)
+        return z # shape (BS, latent dim) (8, 1149)
     
     def decode(self, z):
         z = self.post_quant_conv(z)
         dec = self.decoder(z)
         return dec
 
-    def forward(self, input, sample_posterior=False):
-        posterior = self.encode(input)
-        if sample_posterior and self.variational: # if not self.variational then we cant sample duh
-            z = posterior.sample()
-        else:
-            z = posterior.mode()
+    def forward(self, input):
+        z = self.encode(input)
         dec = self.decode(z)
-        return dec, posterior
+        return dec
+
+    def sample(self, num_samples):
+        h = self.N.sample((num_samples, 2*self.z_channels, self.embed_dim))
+        param = self.quant_conv(h)
+        mu, self.logvar = torch.chunk(param, 2, dim=1)
+        std = torch.exp(0.5 * self.logvar)
+        z = mu + std*self.N.sample(mu.shape)
+        return z
 
     def get_input(self, batch, k):
         x = batch[k]

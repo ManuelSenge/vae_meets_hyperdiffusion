@@ -18,9 +18,9 @@ def train(model, iterator, acc_grad_batches, optimizer, loss, device, warmup, be
         weights = weights.view(weights.shape[0], 1, weights.shape[1])
         weights = torch.nn.functional.pad(weights, (0, padding)).to(device)
 
-        predictions, posterior = model(weights, sample_posterior=variational)
+        predictions = model(weights)
 
-        loss_val_mse, loss_val_kl = loss(predictions[:, :, :-padding], weights[:, :, :-padding], variational, posterior)
+        loss_val_mse, loss_val_kl = loss(predictions[:, :, :-padding], weights[:, :, :-padding], variational, model)
         # during warmup only train mse loss
         if warmup or not variational:
             loss_val = loss_val_mse
@@ -37,7 +37,7 @@ def train(model, iterator, acc_grad_batches, optimizer, loss, device, warmup, be
         epoch_loss_val_kl += loss_val_kl.item()
 
 
-    return epoch_loss_val_mse / (len(iterator) * normalizing_constant), epoch_loss_val_kl / len(iterator), posterior
+    return epoch_loss_val_mse / (len(iterator) * normalizing_constant), epoch_loss_val_kl / len(iterator)
 
 def evaluate(model, iterator, loss, device, beta, variational, normalizing_constant=1, remove_std_zero_indices = True):
     epoch_loss_val_mse = 0
@@ -55,9 +55,9 @@ def evaluate(model, iterator, loss, device, beta, variational, normalizing_const
         weights = weights.view(weights.shape[0], 1, weights.shape[1])
         weights = torch.nn.functional.pad(weights, (0, padding)).to(device)
 
-        predictions, posterior = model(weights, sample_posterior=variational)
+        predictions = model(weights)
 
-        loss_val_mse, loss_val_kl = loss(predictions[:, :, :-padding], weights[:, :, :-padding], variational, posterior)
+        loss_val_mse, loss_val_kl = loss(predictions[:, :, :-padding], weights[:, :, :-padding], variational, model)
         if not variational:
             loss_val = loss_val_mse
         else:
