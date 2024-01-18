@@ -2,7 +2,7 @@
 import torch
 import time
 
-def train(model, iterator, optimizer, loss, device, warmup, beta):
+def train(model, iterator, optimizer, loss, device, warmup, beta, variational):
     epoch_loss_val_mse = 0
     epoch_loss_val_kl = 0
     
@@ -18,12 +18,12 @@ def train(model, iterator, optimizer, loss, device, warmup, beta):
 
         optimizer.zero_grad() # clear gradients first
 
-        predictions, posterior = model(X, sample_posterior=True)
+        predictions, posterior = model(X, sample_posterior=variational)
 
-        loss_val_mse, loss_val_kl = loss(predictions.view(-1, 28*28), X.view(-1, 28*28), True, model)
+        loss_val_mse, loss_val_kl = loss(predictions.view(-1, 28*28), X.view(-1, 28*28), variational, model)
 
         # during warmup only train mse loss
-        if warmup:
+        if warmup or not variational:
             loss_val = loss_val_mse
         else:
             loss_val = loss_val_mse + beta * loss_val_kl
@@ -38,7 +38,7 @@ def train(model, iterator, optimizer, loss, device, warmup, beta):
 
     return epoch_loss_val_mse / len(iterator), epoch_loss_val_kl / len(iterator), posterior
 
-def evaluate(model, iterator, loss, device):
+def evaluate(model, iterator, loss, device, variational):
     epoch_loss_val_mse = 0
     epoch_loss_val_kl = 0
     
@@ -50,9 +50,9 @@ def evaluate(model, iterator, loss, device):
         Y = Y.to(device)
         X = X.to(device)
 
-        predictions, posterior = model(X, sample_posterior=True)
+        predictions, posterior = model(X, sample_posterior=variational)
 
-        loss_val_mse, loss_val_kl = loss(predictions.view(-1, 28*28), X.view(-1, 28*28), True, model)
+        loss_val_mse, loss_val_kl = loss(predictions.view(-1, 28*28), X.view(-1, 28*28), variational, model)
   
         epoch_loss_val_mse += loss_val_mse.item()
         epoch_loss_val_kl += loss_val_kl.item()

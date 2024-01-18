@@ -65,7 +65,7 @@ def main():
     min_lr = learning_rate / 100
     single_sample_overfit = False
     single_sample_overfit_index = 1
-    beta = 10e-4
+    beta = 1
 
     scheduler = None    
     generate_every_n_epochs = 1
@@ -106,9 +106,9 @@ def main():
     dropout = ae_params.dropout
     num_res = ae_params.num_res_blocks
     ch_mult = ae_params.ch_mult
-    embed_dim = 14
+    embed_dim = 7
 
-    run_params_name = f'ldm_latent_{embed_dim}_attention_{attention_resolutions}_dropout_{dropout}_lr_{learning_rate}_num_res_{num_res}_ch_mult_{ch_mult}_BS_{BS}'
+    run_params_name = f'ldm_latent_{embed_dim}_attention_{attention_resolutions}_dropout_{dropout}_lr_{learning_rate}_num_res_{num_res}_ch_mult_{ch_mult}_BS_{BS}_beta{beta}'
     
     if normalize:
         run_params_name += '_normalized'
@@ -219,11 +219,12 @@ def main():
 
     for epoch in range(start_epoch, N_EPOCHS):
         start_time = time.time()
-        train_mse_loss, train_kl_loss, posterior = train(model, train_dl, optimizer, loss, device, epoch < warmup_epochs, beta)
-        val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device)
+        train_mse_loss, train_kl_loss, posterior = train(model, train_dl, optimizer, loss, device, epoch < warmup_epochs, beta, variational)
+        val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, variational)
         if log_wandb and epoch%generate_every_n_epochs==0:
             generate_during_training(wandb_logger, model, epoch, generate_n_meshes, samples, device)
-            generate_during_training(wandb_logger, model, epoch, generate_n_meshes, None, device)
+            if variational:
+                generate_during_training(wandb_logger, model, epoch, generate_n_meshes, None, device)
         end_time = time.time()
 
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
