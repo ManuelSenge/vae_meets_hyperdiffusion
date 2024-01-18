@@ -240,7 +240,7 @@ class AttnBlock(nn.Module):
             h_ = torch.bmm(v,w_)     # b, c,hw (hw of q) h_[b,c,j] = sum_i v[b,c,i] w_[b,i,j]
             h_ = h_.reshape(b,c,hw)
 
-            h_ = self.proj_out(h_)
+        h_ = self.proj_out(h_)
 
         return x+h_
 
