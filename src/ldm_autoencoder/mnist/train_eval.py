@@ -20,7 +20,7 @@ def train(model, iterator, optimizer, loss, device, warmup, beta):
 
         predictions, posterior = model(X, sample_posterior=True)
 
-        loss_val_mse, loss_val_kl = loss(predictions, Y, True, model)
+        loss_val_mse, loss_val_kl = loss(predictions.view(-1, 28*28), X.view(-1, 28*28), True, model)
 
         # during warmup only train mse loss
         if warmup:
@@ -52,7 +52,7 @@ def evaluate(model, iterator, loss, device):
 
         predictions, posterior = model(X, sample_posterior=True)
 
-        loss_val_mse, loss_val_kl = loss(predictions, Y, True, model)
+        loss_val_mse, loss_val_kl = loss(predictions.view(-1, 28*28), X.view(-1, 28*28), True, model)
   
         epoch_loss_val_mse += loss_val_mse.item()
         epoch_loss_val_kl += loss_val_kl.item()

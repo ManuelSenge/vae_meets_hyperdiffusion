@@ -65,12 +65,11 @@ def main():
     min_lr = learning_rate / 100
     single_sample_overfit = False
     single_sample_overfit_index = 1
-    beta = 10e-5
+    beta = 10e-4
 
     scheduler = None    
-    generate_every_n_epochs = 5
+    generate_every_n_epochs = 1
     generate_n_meshes = 2
-    generate_train = True
 
     if scheduler == ScheduleType.EXP_CAPPED:
         scheduler_exp_mult = 0.95
@@ -120,6 +119,11 @@ def main():
     if scheduler is not None:
         run_params_name += f'schedule_{scheduler}'
 
+    if warmup_epochs == 0:
+        run_params_name += 'no_warmup_'
+    else:
+        run_params_name += f'warmup_{warmup_epochs}_'
+
     output_file = f'{run_params_name}_{SEED}'
     
     use_checkpoint = False
@@ -158,12 +162,10 @@ def main():
     train_dl = DataLoader(train_dataset, batch_size=BS, shuffle=True)
     val_dl = DataLoader(val_dataset, batch_size=BS, shuffle=False)
     
-    if generate_train:
-        samples = []
-        for i in range(generate_n_meshes):
-            samples.append(train_dataset.__getitem__(i))
-    else:
-        samples = None
+    samples = []
+    for i in range(generate_n_meshes):
+        samples.append(train_dataset.__getitem__(i))
+   
 
     loss_config = config_model.model.params.lossconfig
     ddconfig = config_model.model.params.ddconfig
@@ -221,6 +223,7 @@ def main():
         val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device)
         if log_wandb and epoch%generate_every_n_epochs==0:
             generate_during_training(wandb_logger, model, epoch, generate_n_meshes, samples, device)
+            generate_during_training(wandb_logger, model, epoch, generate_n_meshes, None, device)
         end_time = time.time()
 
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
