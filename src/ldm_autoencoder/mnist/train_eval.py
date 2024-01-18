@@ -35,7 +35,6 @@ def train(model, iterator, optimizer, loss, device, warmup):
         epoch_loss_val_mse += loss_val_mse.item()
         epoch_loss_val_kl += loss_val_kl.item()
         end = time.time()
-        break
 
     return epoch_loss_val_mse / len(iterator), epoch_loss_val_kl / len(iterator), posterior
 
@@ -57,6 +56,5 @@ def evaluate(model, iterator, loss, device):
   
         epoch_loss_val_mse += loss_val_mse.item()
         epoch_loss_val_kl += loss_val_kl.item()
-        break
 
     return epoch_loss_val_mse / len(iterator),  epoch_loss_val_kl / len(iterator)

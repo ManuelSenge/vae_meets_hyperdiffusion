@@ -27,15 +27,22 @@ from pytorch_lightning.loggers import WandbLogger
 random.seed(1234)
 np.random.seed(1234)
 
-def generate_during_training(wandb_logger, model, epoch, num_imgs):
-    print('sample')
-    for i in range(num_imgs):
-        latent = model.sample2D(1)
-        encoded = model.decode(latent)
-        print('i', i)
-        w_img = wandb.Image(encoded, caption="generated sample")
-        wandb.log({"examples": w_img})
-        print('done')
+def generate_during_training(wandb_logger, model, epoch, num_imgs, samples, device):
+    if samples is None:
+        for i in range(num_imgs):
+            latent = model.sample2D(1)
+            encoded = model.decode(latent)
+            w_img = wandb.Image(encoded, caption="generated sample")
+            wandb.log({"randomly generated": w_img})
+    else:
+        for s in samples:
+            encoded, post = model(s[1].view(1, 1, 28, 28).to(device))
+            encoded = encoded.detach().cpu()
+            true_img = wandb.Image(s[1], caption="generated sample")
+            pred_img = wandb.Image(encoded, caption="generated sample")
+            wandb.log({"true": true_img})
+            wandb.log({"encoded": pred_img})
+
 
 class ScheduleType(Enum):
     EXP_CAPPED = 1
@@ -62,6 +69,7 @@ def main():
     scheduler = None    
     generate_every_n_epochs = 1
     generate_n_meshes = 2
+    generate_train = True
 
     if scheduler == ScheduleType.EXP_CAPPED:
         scheduler_exp_mult = 0.95
@@ -144,10 +152,18 @@ def main():
                     "use_checkpoint": use_checkpoint
                     })
         wandb_logger = WandbLogger()
+    train_dataset = MNISTDataset(train=True, shuffle=True)
+    val_dataset = MNISTDataset(train=False, shuffle=False)
 
-    train_dl = DataLoader(MNISTDataset(train=True, shuffle=True), batch_size=BS, shuffle=True)
-    val_dl = DataLoader(MNISTDataset(train=False, shuffle=False), batch_size=BS, shuffle=False)
+    train_dl = DataLoader(train_dataset, batch_size=BS, shuffle=True)
+    val_dl = DataLoader(val_dataset, batch_size=BS, shuffle=False)
     
+    if generate_train:
+        samples = []
+        for i in range(generate_n_meshes):
+            samples.append(train_dataset.__getitem__(i))
+    else:
+        samples = None
 
     loss_config = config_model.model.params.lossconfig
     ddconfig = config_model.model.params.ddconfig
@@ -206,7 +222,7 @@ def main():
         val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device)
         print('done eval')
         if log_wandb and epoch%generate_every_n_epochs==0:
-            generate_during_training(wandb_logger, model, epoch, generate_n_meshes)
+            generate_during_training(wandb_logger, model, epoch, generate_n_meshes, samples, device)
         end_time = time.time()
 
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
