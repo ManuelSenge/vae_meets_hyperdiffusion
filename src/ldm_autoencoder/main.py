@@ -124,7 +124,7 @@ def main(cfg: DictConfig):
 
         wandb.init( project=project,
                     entity="adl-cv",
-                    name='test',#f'{run_params_name}',
+                    name=f'{run_params_name}',
                     config={
                     "learning_rate": learning_rate,
                     "batch_size": BS,

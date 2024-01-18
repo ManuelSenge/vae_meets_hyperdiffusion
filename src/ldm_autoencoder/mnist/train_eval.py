@@ -2,7 +2,7 @@
 import torch
 import time
 
-def train(model, iterator, optimizer, loss, device, warmup):
+def train(model, iterator, optimizer, loss, device, warmup, beta):
     epoch_loss_val_mse = 0
     epoch_loss_val_kl = 0
     
@@ -26,8 +26,7 @@ def train(model, iterator, optimizer, loss, device, warmup):
         if warmup:
             loss_val = loss_val_mse
         else:
-            loss_val = loss_val_mse + 0.000001 * loss_val_kl
-        
+            loss_val = loss_val_mse + beta * loss_val_kl
             
         loss_val.backward()
         optimizer.step()
@@ -35,6 +34,7 @@ def train(model, iterator, optimizer, loss, device, warmup):
         epoch_loss_val_mse += loss_val_mse.item()
         epoch_loss_val_kl += loss_val_kl.item()
         end = time.time()
+        
 
     return epoch_loss_val_mse / len(iterator), epoch_loss_val_kl / len(iterator), posterior
 
@@ -56,5 +56,6 @@ def evaluate(model, iterator, loss, device):
   
         epoch_loss_val_mse += loss_val_mse.item()
         epoch_loss_val_kl += loss_val_kl.item()
+        
 
     return epoch_loss_val_mse / len(iterator),  epoch_loss_val_kl / len(iterator)
