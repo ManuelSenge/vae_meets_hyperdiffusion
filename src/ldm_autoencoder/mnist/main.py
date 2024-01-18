@@ -132,9 +132,12 @@ def main():
     random.seed(SEED)
     np.random.seed(SEED)
 
-
+    variational = ddconfig['variational']
     if log_wandb:
-        project = "MNIST-LDM-VAE"
+        if variational:
+            project = "MNIST-LDM-VAE"
+        else:
+            project = "MNIST-LDM-AE"
 
         wandb.init( project=project,
                     entity="adl-cv",
@@ -171,7 +174,6 @@ def main():
     ddconfig = config_model.model.params.ddconfig
 
     model = AutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=embed_dim)
-    variational = ddconfig['variational']
     # loss = model.loss
 
     loss = VAELoss(autoencoder=None)
