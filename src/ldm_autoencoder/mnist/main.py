@@ -59,15 +59,16 @@ def main():
     BS = 256
     SEED = 1234
     N_EPOCHS = 800
-    warmup_epochs = 10
+    warmup_epochs = 0
     normalize = True
     learning_rate = 0.0002
     min_lr = learning_rate / 100
     single_sample_overfit = False
     single_sample_overfit_index = 1
+    beta = 10e-5
 
     scheduler = None    
-    generate_every_n_epochs = 1
+    generate_every_n_epochs = 5
     generate_n_meshes = 2
     generate_train = True
 
@@ -92,7 +93,6 @@ def main():
     
     device = "auto"
     log_wandb = 1
-    remove_indx = False
 
     if device == 'auto':
         if torch.cuda.is_available():
@@ -217,10 +217,8 @@ def main():
 
     for epoch in range(start_epoch, N_EPOCHS):
         start_time = time.time()
-        train_mse_loss, train_kl_loss, posterior = train(model, train_dl, optimizer, loss, device, epoch <= warmup_epochs)
-        print('done training')
+        train_mse_loss, train_kl_loss, posterior = train(model, train_dl, optimizer, loss, device, epoch < warmup_epochs, beta)
         val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device)
-        print('done eval')
         if log_wandb and epoch%generate_every_n_epochs==0:
             generate_during_training(wandb_logger, model, epoch, generate_n_meshes, samples, device)
         end_time = time.time()
