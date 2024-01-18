@@ -304,15 +304,22 @@ class AutoencoderKL(pl.LightningModule):
 
         self.variational = ddconfig['variational']
 
+        self.conv_2d = ddconfig['conv_2d']
+        if self.conv_2d:
+            conv = torch.nn.Conv2d
+        else:
+            conv = torch.nn.Conv1d
+
         if self.variational:
             self.N = torch.distributions.Normal(0, 1)
             self.N.loc = self.N.loc.to(device)
             self.N.scale = self.N.scale.to(device)
-            self.quant_conv = torch.nn.Conv1d(2*ddconfig["z_channels"], 2*embed_dim, 1)
-            self.post_quant_conv = torch.nn.Conv1d(embed_dim, ddconfig["z_channels"], 1)
+            self.quant_conv = conv(2*ddconfig["z_channels"], 2*embed_dim, 1)
+            self.post_quant_conv = conv(embed_dim, ddconfig["z_channels"], 1)
         else:
-            self.quant_conv = torch.nn.Conv1d(2*ddconfig["z_channels"], embed_dim, 1)
-            self.post_quant_conv = torch.nn.Conv1d(embed_dim, ddconfig["z_channels"], 1)
+            self.quant_conv = conv(2*ddconfig["z_channels"], embed_dim, 1)
+            self.post_quant_conv =conv(embed_dim, ddconfig["z_channels"], 1)
+
         self.embed_dim = embed_dim
         if colorize_nlabels is not None:
             assert type(colorize_nlabels)==int
@@ -364,6 +371,15 @@ class AutoencoderKL(pl.LightningModule):
         std = torch.exp(0.5 * self.logvar)
         z = mu + std*self.N.sample(mu.shape)
         return z
+
+    def sample2D(self, num_samples):
+        h = self.N.sample((num_samples, 2*self.z_channels, self.embed_dim, self.embed_dim))
+        param = self.quant_conv(h)
+        mu, self.logvar = torch.chunk(param, 2, dim=1)
+        std = torch.exp(0.5 * self.logvar)
+        z = mu + std*self.N.sample(mu.shape)
+        return z
+
 
     def get_input(self, batch, k):
         x = batch[k]

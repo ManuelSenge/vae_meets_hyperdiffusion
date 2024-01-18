@@ -63,7 +63,7 @@ def main(cfg: DictConfig):
 
     # variational params
     warmup_epochs = 30 if variational else 0
-    beta = 0.000001 if variational else 1
+    beta = 0.001 if variational else 1
 
     # normalization params
     normalize = True
@@ -132,6 +132,9 @@ def main(cfg: DictConfig):
     dropout = ae_params.dropout
     num_res = ae_params.num_res_blocks
     ch_mult = ae_params.ch_mult
+    conv_2d = ae_params.conv_2d
+
+    assert not conv_2d
 
 
     removed_std_indices = None
