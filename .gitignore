@@ -144,3 +144,6 @@ dmypy.json
 
 vols/
 src/ldm_autoencoder/taming/modules/autoencoder/lpips/vgg.pth
+src/ldm_autoencoder/mnist/taming/modules/autoencoder/lpips/vgg.pth
+src/ldm_autoencoder/mnist/output/
+src/ldm_autoencoder/mnist/data/

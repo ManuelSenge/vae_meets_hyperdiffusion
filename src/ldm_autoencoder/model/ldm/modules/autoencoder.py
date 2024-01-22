@@ -346,6 +346,7 @@ class AutoencoderKL(pl.LightningModule):
             param = self.quant_conv(h) 
 
             mu, self.logvar = torch.chunk(param, 2, dim=1)
+            
             std = torch.exp(0.5 * self.logvar)
             z = mu + std*self.N.sample(mu.shape)
             self.kl = (std**2 + mu**2 - torch.log(std) - 1/2).sum()

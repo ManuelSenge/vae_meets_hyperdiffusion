@@ -84,7 +84,7 @@ class Downsample(nn.Module):
 
     def forward(self, x):
         if self.with_conv:
-            pad = (0,1,0,0)
+            pad = (0, 1, 0, 1) if self.conv_2d else (0,1,0,0) 
             x = torch.nn.functional.pad(x, pad, mode="constant", value=0)
             x = self.conv(x)
         else:

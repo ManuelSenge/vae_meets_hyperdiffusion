@@ -1,5 +1,6 @@
 from dataset import MNISTDataset
 from train_eval import train, evaluate
+import torch.nn.functional as F
 
 import sys
 sys.path.append('../')
@@ -28,16 +29,17 @@ random.seed(1234)
 np.random.seed(1234)
 
 def generate_during_training(wandb_logger, model, epoch, num_imgs, samples, device):
+    model.eval()
     if samples is None:
         for i in range(num_imgs):
             latent = model.sample2D(1)
-            encoded = model.decode(latent)
+            encoded = F.sigmoid(model.decode(latent))
             w_img = wandb.Image(encoded, caption="generated sample")
             wandb.log({"randomly generated": w_img})
     else:
         for s in samples:
-            encoded, post = model(s[1].view(1, 1, 28, 28).to(device))
-            encoded = encoded.detach().cpu()
+            encoded = model(s[1].view(1, 1, 28, 28).to(device))
+            encoded = F.sigmoid(encoded).detach().cpu()
             true_img = wandb.Image(s[1], caption="generated sample")
             pred_img = wandb.Image(encoded, caption="generated sample")
             wandb.log({"true": true_img})
@@ -65,11 +67,11 @@ def main():
     min_lr = learning_rate / 100
     single_sample_overfit = False
     single_sample_overfit_index = 1
-    beta = 10e-4
+    beta = 1
 
     scheduler = None    
     generate_every_n_epochs = 1
-    generate_n_meshes = 2
+    generate_n_meshes = 3
 
     if scheduler == ScheduleType.EXP_CAPPED:
         scheduler_exp_mult = 0.95
@@ -91,7 +93,7 @@ def main():
         raise ValueError(f"Scheduler value {scheduler} not recognized")
     
     device = "auto"
-    log_wandb = 0
+    log_wandb = 1
 
     if device == 'auto':
         if torch.cuda.is_available():
@@ -106,7 +108,7 @@ def main():
     dropout = ae_params.dropout
     num_res = ae_params.num_res_blocks
     ch_mult = ae_params.ch_mult
-    embed_dim = 14
+    embed_dim = 7
     conv_2d = ae_params.conv_2d
 
     assert conv_2d
@@ -129,15 +131,15 @@ def main():
 
     output_file = f'{run_params_name}_{SEED}'
     
-    use_checkpoint = False
+    use_checkpoint = True
 
     checkpoint_path = f"{output_dir}/cp_{output_file}.pt"
     random.seed(SEED)
     np.random.seed(SEED)
 
-
+    variational = ae_params.variational
     if log_wandb:
-        project = "MNIST-LDM-VAE"
+        project = "MNIST-LDM-VAE" if variational else "MNIST-LDM-AE"
 
         wandb.init( project=project,
                     entity="adl-cv",
@@ -173,8 +175,8 @@ def main():
     loss_config = config_model.model.params.lossconfig
     ddconfig = config_model.model.params.ddconfig
 
+    
     model = AutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=embed_dim, device=device)
-    variational = ddconfig['variational']
     # loss = model.loss
 
     loss = VAELoss(autoencoder=None)
@@ -222,11 +224,12 @@ def main():
 
     for epoch in range(start_epoch, N_EPOCHS):
         start_time = time.time()
-        train_mse_loss, train_kl_loss, posterior = train(model, train_dl, optimizer, loss, device, epoch < warmup_epochs, beta)
-        val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device)
+        train_mse_loss, train_kl_loss = train(model, train_dl, optimizer, loss, device, epoch < warmup_epochs, beta, variational=variational)
+        val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, variational=variational)
         if log_wandb and epoch%generate_every_n_epochs==0:
             generate_during_training(wandb_logger, model, epoch, generate_n_meshes, samples, device)
-            generate_during_training(wandb_logger, model, epoch, generate_n_meshes, None, device)
+            if variational:
+                generate_during_training(wandb_logger, model, epoch, generate_n_meshes, None, device)
         end_time = time.time()
 
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
@@ -249,8 +252,8 @@ def main():
             
 
         print(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s | LR: {lr_scheduler.get_last_lr()[0]}')
-        print(f'\t Train MSE Loss: {train_mse_loss:.3f} Train KL Loss: {train_kl_loss:.3f}')
-        print(f'\t Val. MSE Loss: {val_mse_loss:.3f} Val. KL Loss: {val_kl_loss:.3f}')
+        print(f'\t Train MSE Loss: {train_mse_loss:.3f} | Train KL Loss: {train_kl_loss:.3f} | TRAIN KL Loss (beta): {train_kl_loss*beta:.3f}')
+        print(f'\t Val. MSE Loss: {val_mse_loss:.3f} | Val. KL Loss: {val_kl_loss:.3f} | VAL KL Loss (beta): {val_kl_loss*beta:.3f}')
 
         f = open(f"{output_dir}/{output_file}.txt", "a")
         f.write(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s\n | LR: {lr_scheduler.get_last_lr()[0]}')
