@@ -3,7 +3,7 @@ import torch
 import time
 import torch.nn.functional as F
 
-def train(model, iterator, optimizer, loss, device, warmup, beta, variational):
+def train(model, iterator, optimizer, loss, device, warmup, beta, variational, conv_2d=False):
     epoch_loss_val_mse = 0
     epoch_loss_val_kl = 0
     
@@ -16,12 +16,18 @@ def train(model, iterator, optimizer, loss, device, warmup, beta, variational):
         Y = Y.to(device)
         X = X.to(device)
 
+        if not conv_2d:
+            X = X.view(-1, 1, 28*28)
+
 
         optimizer.zero_grad() # clear gradients first
 
-        predictions = model(X)
+        predictions, posteriors = model(X, sample_posterior=variational)
 
-        loss_val_mse, loss_val_kl = loss(F.sigmoid(predictions.view(-1, 28*28)), X.view(-1, 28*28), variational, model)
+        loss_val_mse = loss(F.sigmoid(predictions.view(-1, 28*28)), X.view(-1, 28*28))
+        loss_val_kl = posteriors.kl()
+        loss_val_kl = torch.sum(loss_val_kl) / loss_val_kl.shape[0]
+
 
         # during warmup only train mse loss
         if warmup or not variational:
@@ -36,10 +42,12 @@ def train(model, iterator, optimizer, loss, device, warmup, beta, variational):
         epoch_loss_val_kl += loss_val_kl.item()
         end = time.time()
         
+        
+        
 
     return epoch_loss_val_mse / len(iterator), epoch_loss_val_kl / len(iterator)
 
-def evaluate(model, iterator, loss, device, variational):
+def evaluate(model, iterator, loss, device, variational, conv_2d=False):
     epoch_loss_val_mse = 0
     epoch_loss_val_kl = 0
     
@@ -51,12 +59,19 @@ def evaluate(model, iterator, loss, device, variational):
         Y = Y.to(device)
         X = X.to(device)
 
-        predictions = model(X)
+        if not conv_2d:
+            X = X.view(-1, 1, 28*28)
 
-        loss_val_mse, loss_val_kl = loss(F.sigmoid(predictions.view(-1, 28*28)), X.view(-1, 28*28), variational, model)
-  
+        predictions, posteriors = model(X)
+
+        loss_val_mse = loss(F.sigmoid(predictions.view(-1, 28*28)), X.view(-1, 28*28))
+        loss_val_kl = posteriors.kl()
+        loss_val_kl = torch.sum(loss_val_kl) / loss_val_kl.shape[0]
+
+
         epoch_loss_val_mse += loss_val_mse.item()
         epoch_loss_val_kl += loss_val_kl.item()
+        
         
 
     return epoch_loss_val_mse / len(iterator),  epoch_loss_val_kl / len(iterator)

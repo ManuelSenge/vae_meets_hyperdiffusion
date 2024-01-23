@@ -324,7 +324,7 @@ def _add_removed_indices(sample, removed_indices, removed_values, device):
 def generate_during_training(model, gen_dataset, gen_sample_indices, epoch,
                             device, wandb_logger, variational,
                             remove_std_zero_indices, removed_std_indices, removed_std_values, resolution):
-    
+    model.eval()
     padding = 21 if remove_std_zero_indices else 31
 
     normalizing_constant = gen_dataset.get_normalized_constant()
@@ -336,7 +336,9 @@ def generate_during_training(model, gen_dataset, gen_sample_indices, epoch,
 
         original_sample = None
         if variational:
-            sample = model.sample(1)
+            render_name = "random_sample"
+            sample = model.posterior.sample()[0]
+            sample = sample.view(1, sample.shape[0], sample.shape[1])
             dec_sample = model.decode(sample)
             dec_sample = dec_sample.view((-1,))
             dec_sample = dec_sample[:-padding]
@@ -344,6 +346,7 @@ def generate_during_training(model, gen_dataset, gen_sample_indices, epoch,
 
             dec_sample = dec_sample.to(cpu_device)
         else: 
+            render_name = "generated_sample"
             original_sample, _, _ = gen_dataset.__getitem__(sample_index)
             sample = original_sample.view(1, 1, original_sample.shape[0])
             sample_padded = torch.nn.functional.pad(sample,  (0,padding)).to(device)
@@ -354,22 +357,21 @@ def generate_during_training(model, gen_dataset, gen_sample_indices, epoch,
             dec_sample = dec_sample[:-padding].to(cpu_device)
             print(f"Generating image... (MSE-Loss: {torch.nn.functional.mse_loss(original_sample, dec_sample)})")
             dec_sample /= normalizing_constant
-            original_sample /= normalizing_constant
-
             dec_sample = dec_sample
 
         
         if remove_std_zero_indices:
             dec_sample = _add_removed_indices(dec_sample, removed_std_indices, removed_std_values, device=cpu_device)
-            if not variational:
+            if not variational and epoch == 0:
+                original_sample /= normalizing_constant
                 original_sample = _add_removed_indices(original_sample, removed_std_indices, removed_std_values, device=cpu_device)
 
         pred_img = generate_images_from_VAE(dec_sample, resolution=resolution)
 
         wandb_logger.log_image(
-                "generated_renders", pred_img, step=epoch*10+i
+                render_name, pred_img, step=epoch*10+i
         )
-        if not variational:
+        if not variational and epoch == 0:
             assert original_sample is not None
             true_img = generate_images_from_VAE(original_sample, resolution=resolution)
             wandb_logger.log_image(

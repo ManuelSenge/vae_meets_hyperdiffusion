@@ -3,11 +3,9 @@ import pytorch_lightning as pl
 import torch.nn.functional as F
 from contextlib import contextmanager
 
-from taming.modules.vqvae.quantize import VectorQuantizer#2 as VectorQuantizer
-
 from model.ldm.modules.diffusionmodules.model import Encoder, Decoder
 from model.ldm.modules.distributions.distributions import DiagonalGaussianDistribution
-from model.ldm.util import instantiate_from_config
+
 
 
 class VQModel(pl.LightningModule):
@@ -38,8 +36,8 @@ class VQModel(pl.LightningModule):
         self.quantize = VectorQuantizer(n_embed, embed_dim, beta=0.25,
                                         remap=remap,
                                         sane_index_shape=sane_index_shape)
-        self.quant_conv = torch.nn.Conv1d(ddconfig["z_channels"], embed_dim, 1)
-        self.post_quant_conv = torch.nn.Conv1d(embed_dim, ddconfig["z_channels"], 1)
+        self.quant_conv = torch.nn.Conv2d(ddconfig["z_channels"], embed_dim, 1)
+        self.post_quant_conv = torch.nn.Conv2d(embed_dim, ddconfig["z_channels"], 1)
         if colorize_nlabels is not None:
             assert type(colorize_nlabels)==int
             self.register_buffer("colorize", torch.randn(3, colorize_nlabels, 1, 1))
@@ -255,7 +253,7 @@ class VQModel(pl.LightningModule):
         assert self.image_key == "segmentation"
         if not hasattr(self, "colorize"):
             self.register_buffer("colorize", torch.randn(3, x.shape[1], 1, 1).to(x))
-        x = F.Conv1d(x, weight=self.colorize)
+        x = F.conv2d(x, weight=self.colorize)
         x = 2.*(x-x.min())/(x.max()-x.min()) - 1.
         return x
 
@@ -286,40 +284,27 @@ class AutoencoderKL(pl.LightningModule):
                  ddconfig,
                  lossconfig,
                  embed_dim,
-                 device,
                  ckpt_path=None,
                  ignore_keys=[],
                  image_key="image",
                  colorize_nlabels=None,
                  monitor=None,
+                 device=None,
                  ):
         super().__init__()
         self.image_key = image_key
         self.encoder = Encoder(**ddconfig)
         self.decoder = Decoder(**ddconfig)
-        self.loss = instantiate_from_config(lossconfig)
+
+        # self.loss = instantiate_from_config(lossconfig)
         assert ddconfig["double_z"]
 
-        self.z_channels = ddconfig["z_channels"]
+        self.conv_2d = ddconfig["conv_2d"]
 
-        self.variational = ddconfig['variational']
+        conv = torch.nn.Conv2d if self.conv_2d else torch.nn.Conv1d
 
-        self.conv_2d = ddconfig['conv_2d']
-        if self.conv_2d:
-            conv = torch.nn.Conv2d
-        else:
-            conv = torch.nn.Conv1d
-
-        if self.variational:
-            self.N = torch.distributions.Normal(0, 1)
-            self.N.loc = self.N.loc.to(device)
-            self.N.scale = self.N.scale.to(device)
-            self.quant_conv = conv(2*ddconfig["z_channels"], 2*embed_dim, 1)
-            self.post_quant_conv = conv(embed_dim, ddconfig["z_channels"], 1)
-        else:
-            self.quant_conv = conv(2*ddconfig["z_channels"], embed_dim, 1)
-            self.post_quant_conv =conv(embed_dim, ddconfig["z_channels"], 1)
-
+        self.quant_conv = conv(2*ddconfig["z_channels"], 2*embed_dim, 1)
+        self.post_quant_conv = conv(embed_dim, ddconfig["z_channels"], 1)
         self.embed_dim = embed_dim
         if colorize_nlabels is not None:
             assert type(colorize_nlabels)==int
@@ -342,45 +327,35 @@ class AutoencoderKL(pl.LightningModule):
 
     def encode(self, x):
         h = self.encoder(x)
-        if self.variational:
-            param = self.quant_conv(h) 
+        moments = self.quant_conv(h)
+        posterior = DiagonalGaussianDistribution(moments)
+        return posterior
 
-            mu, self.logvar = torch.chunk(param, 2, dim=1)
-            
-            std = torch.exp(0.5 * self.logvar)
-            z = mu + std*self.N.sample(mu.shape)
-            self.kl = (std**2 + mu**2 - torch.log(std) - 1/2).sum()
-            return z
-        else:
-            return self.quant_conv(h)
-        return z # shape (BS, latent dim) (8, 1149)
-    
     def decode(self, z):
         z = self.post_quant_conv(z)
         dec = self.decoder(z)
         return dec
-
-    def forward(self, input):
-        z = self.encode(input)
+    
+    def inference(self, input, sample_posterior=True):
+        posterior = self.encode(input)
+        if sample_posterior:
+            z = posterior.sample()
+        else:
+            z = posterior.mode()
         dec = self.decode(z)
-        return dec
+        return dec, posterior
 
-    def sample(self, num_samples):
-        h = self.N.sample((num_samples, 2*self.z_channels, self.embed_dim))
-        param = self.quant_conv(h)
-        mu, self.logvar = torch.chunk(param, 2, dim=1)
-        std = torch.exp(0.5 * self.logvar)
-        z = mu + std*self.N.sample(mu.shape)
-        return z
-
-    def sample2D(self, num_samples):
-        h = self.N.sample((num_samples, 2*self.z_channels, self.embed_dim, self.embed_dim))
-        param = self.quant_conv(h)
-        mu, self.logvar = torch.chunk(param, 2, dim=1)
-        std = torch.exp(0.5 * self.logvar)
-        z = mu + std*self.N.sample(mu.shape)
-        return z
-
+    def forward(self, input, sample_posterior=True):
+        if self.training:
+            self.posterior = self.encode(input)
+            if sample_posterior:
+                z = self.posterior.sample()
+            else:
+                z = self.posterior.mode()
+            dec = self.decode(z)
+            return dec, self.posterior
+        else:
+            return self.inference(input, sample_posterior=sample_posterior)
 
     def get_input(self, batch, k):
         x = batch[k]
@@ -459,7 +434,7 @@ class AutoencoderKL(pl.LightningModule):
         assert self.image_key == "segmentation"
         if not hasattr(self, "colorize"):
             self.register_buffer("colorize", torch.randn(3, x.shape[1], 1, 1).to(x))
-        x = F.Conv1d(x, weight=self.colorize)
+        x = F.conv2d(x, weight=self.colorize)
         x = 2.*(x-x.min())/(x.max()-x.min()) - 1.
         return x
 

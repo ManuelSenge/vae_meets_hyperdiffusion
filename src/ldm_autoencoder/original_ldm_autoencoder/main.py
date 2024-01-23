@@ -19,8 +19,8 @@ import random
 import numpy as np
 import sys
 sys.path.append('../../')
-from loss import RecLoss
 from model.ldm.modules.autoencoder import AutoencoderKL
+from loss import VAELoss
 from functools import partial
 from enum import Enum
 from pytorch_lightning.loggers import WandbLogger
@@ -28,34 +28,19 @@ from pytorch_lightning.loggers import WandbLogger
 random.seed(1234)
 np.random.seed(1234)
 
-def generate_during_training(wandb_logger, model, epoch, num_imgs, samples, device, conv_2d):
+def generate_during_training(wandb_logger, model, epoch, num_imgs, samples, device):
     model.eval()
     if samples is None:
         for i in range(num_imgs):
-            latent = model.posterior.sample()[0]
-            latent = latent.view(1, latent.shape[0], latent.shape[1])
+            latent = model.sample2D(1)
             encoded = F.sigmoid(model.decode(latent))
-            if not conv_2d:
-                encoded = encoded.view(1, 28, 28)
-            
             w_img = wandb.Image(encoded, caption="generated sample")
             wandb.log({"randomly generated": w_img})
     else:
         for s in samples:
-            original_img = s[1]
-            if conv_2d:
-                encoded, posterior = model(original_img.view(1, 1, 28, 28).to(device))
-            else:
-                encoded, posterior = model(original_img.view(1, 1, 28*28).to(device))
+            encoded = model(s[1].view(1, 1, 28, 28).to(device))
             encoded = F.sigmoid(encoded).detach().cpu()
-
-            if not conv_2d:
-                encoded = encoded.view(1, 28, 28)
-                original_img = original_img.view(1, 28, 28)
-            
-            
-
-            true_img = wandb.Image(original_img, caption="generated sample")
+            true_img = wandb.Image(s[1], caption="generated sample")
             pred_img = wandb.Image(encoded, caption="generated sample")
             wandb.log({"true": true_img})
             wandb.log({"encoded": pred_img})
@@ -71,18 +56,18 @@ def main():
 
     # this is whats actually used
     print('create model..')
-    config_model = OmegaConf.load('../model/autoencoder_kl_8x8x64_mnist.yaml')
+    config_model = OmegaConf.load('autoencoder_kl_8x8x64_mnist.yaml')
 
     BS = 256
     SEED = 1234
-    N_EPOCHS = 100
+    N_EPOCHS = 800
     warmup_epochs = 0
     normalize = True
     learning_rate = 0.0002
     min_lr = learning_rate / 100
     single_sample_overfit = False
     single_sample_overfit_index = 1
-    beta = 0.001
+    beta = 1
 
     scheduler = None    
     generate_every_n_epochs = 1
@@ -107,8 +92,6 @@ def main():
     else:
         raise ValueError(f"Scheduler value {scheduler} not recognized")
     
-
-
     device = "auto"
     log_wandb = 1
 
@@ -128,6 +111,7 @@ def main():
     embed_dim = 7
     conv_2d = ae_params.conv_2d
 
+    assert conv_2d
 
     run_params_name = f'ldm_latent_{embed_dim}_attention_{attention_resolutions}_dropout_{dropout}_lr_{learning_rate}_num_res_{num_res}_ch_mult_{ch_mult}_BS_{BS}'
     
@@ -147,7 +131,7 @@ def main():
 
     output_file = f'{run_params_name}_{SEED}'
     
-    use_checkpoint = False
+    use_checkpoint = True
 
     checkpoint_path = f"{output_dir}/cp_{output_file}.pt"
     random.seed(SEED)
@@ -174,8 +158,7 @@ def main():
                     "latent": embed_dim,
                     "attn_resolutions":  attention_resolutions,
                     "lr_scheduler": scheduler_string,
-                    "use_checkpoint": use_checkpoint,
-                    "conv_2d": conv_2d,
+                    "use_checkpoint": use_checkpoint
                     })
         wandb_logger = WandbLogger()
     train_dataset = MNISTDataset(train=True, shuffle=True)
@@ -196,7 +179,7 @@ def main():
     model = AutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=embed_dim, device=device)
     # loss = model.loss
 
-    loss = RecLoss()
+    loss = VAELoss(autoencoder=None)
 
     # print(summary(model, (1, 36768), device="cpu"))
 
@@ -241,12 +224,12 @@ def main():
 
     for epoch in range(start_epoch, N_EPOCHS):
         start_time = time.time()
-        train_mse_loss, train_kl_loss = train(model, train_dl, optimizer, loss, device, epoch < warmup_epochs, beta, variational=variational, conv_2d=conv_2d)
+        train_mse_loss, train_kl_loss = train(model, train_dl, optimizer, loss, device, epoch < warmup_epochs, beta, variational=variational)
         val_mse_loss, val_kl_loss = evaluate(model, val_dl, loss, device, variational=variational)
         if log_wandb and epoch%generate_every_n_epochs==0:
-            generate_during_training(wandb_logger, model, epoch, generate_n_meshes, samples, device, conv_2d=conv_2d)
+            generate_during_training(wandb_logger, model, epoch, generate_n_meshes, samples, device)
             if variational:
-                generate_during_training(wandb_logger, model, epoch, generate_n_meshes, None, device, conv_2d=conv_2d)
+                generate_during_training(wandb_logger, model, epoch, generate_n_meshes, None, device)
         end_time = time.time()
 
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)

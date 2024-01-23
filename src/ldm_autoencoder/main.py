@@ -20,7 +20,7 @@ from omegaconf import DictConfig
 import hydra
 from torchsummary import summary
 from model.ldm.modules.autoencoder import AutoencoderKL
-from loss import VAELoss
+from loss import RecLoss
 from functools import partial
 from enum import Enum
 from create_mesh_from_ldm_net import generate_during_training
@@ -58,12 +58,12 @@ def main(cfg: DictConfig):
     SEED = 1234
     N_EPOCHS = 3000
     variational = True
-    learning_rate = 0.0002
+    learning_rate = 4.5e-6
     save_model_every_n_epochs = 10
 
     # variational params
     warmup_epochs = 30 if variational else 0
-    beta = 0.001 if variational else 1
+    beta = 0.000001 if variational else 1
 
     # normalization params
     normalize = True
@@ -347,7 +347,7 @@ def main(cfg: DictConfig):
 
     # loss = model.loss
 
-    loss = VAELoss(autoencoder=None)
+    loss = RecLoss()
 
     # print(summary(model, (1, 36768), device="cpu"))
 
@@ -411,6 +411,19 @@ def main(cfg: DictConfig):
                                      removed_std_values=removed_std_values,
                                      resolution= render_resolution
                                      )
+            if variational:
+                generate_during_training(model,
+                                            gen_dataset,
+                                            gen_sample_indices,
+                                            epoch=epoch,
+                                            device=device,
+                                            wandb_logger=wandb_logger,
+                                            variational=False,
+                                            remove_std_zero_indices=remove_std_zero_indices,
+                                            removed_std_indices=removed_std_indices,
+                                            removed_std_values=removed_std_values,
+                                            resolution=render_resolution
+                                            )
         end_time = time.time()
 
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)

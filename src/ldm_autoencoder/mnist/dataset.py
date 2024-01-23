@@ -22,7 +22,7 @@ class MNISTDataset(Dataset):
         return len(self.labels)
        
     def __getitem__(self, index):
-        return torch.Tensor([self.labels[index]]), torch.Tensor([self.images[index]])
+        return torch.Tensor([self.labels[index]]), torch.Tensor([self.images[index]]).flatten()
 
     def plot_image_by_idx(self, idx):
         plt.imshow(self.images[idx], cmap='gray')

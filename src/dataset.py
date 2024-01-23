@@ -188,6 +188,11 @@ class WeightDataset(Dataset):
             ).type(torch.float32)
         else:
             self.first_weights = torch.tensor([0])
+
+
+    def get_normalized_constant(self):
+        return self.normalize
+    
     def get_removed_std_values(self):
         if not self.remove_std_zero_indices:
             return None

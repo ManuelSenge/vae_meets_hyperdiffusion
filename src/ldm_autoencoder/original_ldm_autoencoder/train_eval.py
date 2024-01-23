@@ -18,13 +18,9 @@ def train(model, iterator, acc_grad_batches, optimizer, loss, device, warmup, be
         weights = weights.view(weights.shape[0], 1, weights.shape[1])
         weights = torch.nn.functional.pad(weights, (0, padding)).to(device)
 
-        predictions, posteriors = model(weights, sample_posterior=variational)
+        predictions = model(weights)
 
-        loss_val_mse = loss(predictions[:, :, :-padding], weights[:, :, :-padding])
-        
-        loss_val_kl = posteriors.kl()
-        loss_val_kl = torch.sum(loss_val_kl) / loss_val_kl.shape[0]
-
+        loss_val_mse, loss_val_kl = loss(predictions[:, :, :-padding], weights[:, :, :-padding], variational, model)
         # during warmup only train mse loss
         if warmup or not variational:
             loss_val = loss_val_mse
@@ -39,6 +35,7 @@ def train(model, iterator, acc_grad_batches, optimizer, loss, device, warmup, be
 
         epoch_loss_val_mse += loss_val_mse.item()
         epoch_loss_val_kl += loss_val_kl.item()
+
 
     return epoch_loss_val_mse / (len(iterator) * normalizing_constant), epoch_loss_val_kl / len(iterator)
 
@@ -58,13 +55,9 @@ def evaluate(model, iterator, loss, device, beta, variational, normalizing_const
         weights = weights.view(weights.shape[0], 1, weights.shape[1])
         weights = torch.nn.functional.pad(weights, (0, padding)).to(device)
 
-        predictions, posteriors = model(weights, sample_posterior=variational)
+        predictions = model(weights)
 
-        loss_val_mse = loss(predictions[:, :, :-padding], weights[:, :, :-padding])
-        
-        loss_val_kl = posteriors.kl()
-        loss_val_kl = torch.sum(loss_val_kl) / loss_val_kl.shape[0]
-        
+        loss_val_mse, loss_val_kl = loss(predictions[:, :, :-padding], weights[:, :, :-padding], variational, model)
         if not variational:
             loss_val = loss_val_mse
         else:
@@ -72,5 +65,6 @@ def evaluate(model, iterator, loss, device, beta, variational, normalizing_const
   
         epoch_loss_val_mse += loss_val_mse.item()
         epoch_loss_val_kl += loss_val_kl.item()
+
 
     return epoch_loss_val_mse / (len(iterator) * normalizing_constant), epoch_loss_val_kl / len(iterator)
