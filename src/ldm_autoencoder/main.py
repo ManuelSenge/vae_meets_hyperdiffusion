@@ -58,7 +58,7 @@ def main(cfg: DictConfig):
     SEED = 1234
     N_EPOCHS = 3000
     variational = True
-    learning_rate = 4.5e-06
+    learning_rate = 0.0002
     save_model_every_n_epochs = 10
 
     # variational params

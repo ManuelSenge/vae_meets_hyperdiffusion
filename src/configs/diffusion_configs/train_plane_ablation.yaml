@@ -24,8 +24,8 @@ model_resume_path:
 sampling: ddim
 val_fid_calculation_period: 15
 lr: 0.0002
-batch_size: 8
-accumulate_grad_batches: 4
+batch_size: 48
+accumulate_grad_batches: 1
 val:
   num_points: 2048
   num_samples: 60

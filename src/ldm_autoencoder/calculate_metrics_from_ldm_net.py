@@ -19,10 +19,11 @@ from dataset import WeightDataset
 from hd_utils import Config
 from omegaconf import DictConfig
 from model.ldm.modules.autoencoder import AutoencoderKL
+from model.ldm.modules.autoencoder_old import OldAutoencoderKL
 from model.ldm.modules.distributions.distributions import DiagonalGaussianDistribution
 import re
 from calc_metrics import calc_metrics
-
+from functools import partial
 
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
 '''
@@ -130,6 +131,8 @@ def main(cfg: DictConfig):
     remove_std_zero_indices = True
     removed_std_indices_path = '../data/std_zero_indices_planes.pt'
 
+    old_autoencoder = True
+
     if remove_std_zero_indices:
         removed_std_indices = torch.load(removed_std_indices_path)
 
@@ -222,20 +225,24 @@ def main(cfg: DictConfig):
     config_model = OmegaConf.load('./model/autoencoder_kl_8x8x64.yaml')
     loss_config = config_model.model.params.lossconfig
     ddconfig = config_model.model.params.ddconfig
-    model = AutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=517)
+
+    if old_autoencoder:
+        model = OldAutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=517)
+    else:
+        model = AutoencoderKL(ddconfig=ddconfig, lossconfig=loss_config, embed_dim=517)
 
     model_dict = torch.load(model_path, map_location=device)
-    # if from_checkpoint:
-    #     model.load_state_dict(model_dict['model_state_dict'])
-    #     if variational:
-    #         posterior_params =  model_dict['posterior']
-    #         posterior = DiagonalGaussianDistribution(posterior_params, variational=True)
-    #     print("Using model at epoch", model_dict['epoch'])
-    # else:
-    #     model.load_state_dict(model_dict)
-    #     if variational:
-    #         posterior_params = torch.load(posterior_path_no_checkpoint)
-    #         posterior = DiagonalGaussianDistribution(posterior_params, variational=True)
+    if from_checkpoint:
+        model.load_state_dict(model_dict['model_state_dict'])
+        if variational:
+            posterior_params =  model_dict['posterior']
+            posterior = DiagonalGaussianDistribution(posterior_params, variational=True)
+        print("Using model at epoch", model_dict['epoch'])
+    else:
+        model.load_state_dict(model_dict)
+        if variational:
+            posterior_params = torch.load(posterior_path_no_checkpoint)
+            posterior = DiagonalGaussianDistribution(posterior_params, variational=True)
 
     model = model.to(device)
     
@@ -266,14 +273,9 @@ def main(cfg: DictConfig):
 
         train_img_indices = [i for i in range(var_sample_count)]
 
-    print("Using validation data" if val_dt else "Using train data")
-    dataset = val_dt if use_validation else train_dt
-    print("train_img_indices:",  train_img_indices)
-    cpu_device = torch.device('cpu')
-    for ix in train_img_indices:
-
+    def sample_from_model(original_sample, variational=False):
         if variational:
-            sample = posterior.sample()[ix]
+            sample = posterior.sample()[0]
             dec_sample = model.decode(sample.view(1, sample.shape[0], sample.shape[1]))
             dec_sample = dec_sample.view((-1,))
             dec_sample = dec_sample[:-padding]
@@ -281,7 +283,7 @@ def main(cfg: DictConfig):
 
             dec_sample = dec_sample.to(cpu_device)
         else:
-            original_sample, _, _ = dataset.__getitem__(ix)
+            # original_sample, _, _ = dataset.__getitem__(ix)
             # normalize sample
             sample = original_sample * 0.6930342789347619
             sample = sample.view(1, 1, sample.shape[0])
@@ -297,22 +299,26 @@ def main(cfg: DictConfig):
             dec_sample = _add_removed_indices(dec_sample, removed_std_indices, removed_std_values, cpu_device)
             if not variational:
                 original_sample = _add_removed_indices(original_sample, removed_std_indices, removed_std_values, cpu_device)
+        return dec_sample
+    
+    
 
+    sample_from_model = partial(sample_from_model, variational=variational)
 
-        if not variational:
-            true_img = generate_images_from_VAE(original_sample, resolution=resolution)
-            print('true_img')
-            if log_wandb:
-                wandb_logger.log_image(
-                        "true_renders", true_img, step=count
-                    )
-        pred_img = generate_images_from_VAE(dec_sample, resolution=resolution)
-        print('pred_img')
-        if log_wandb:
-            wandb_logger.log_image(
-                    "generated_renders", pred_img, step=count
-                )
-        count += 1
+    print("Using validation data" if val_dt else "Using train data")
+    dataset = val_dt if use_validation else train_dt
+    print("train_img_indices:",  train_img_indices)
+    cpu_device = torch.device('cpu')
+    metrics = calc_metrics(sample_from_model,
+                            mlp_kwargs, 
+                            cfg, 
+                            '../output_files/meshes',
+                            'train',
+                            test_object_names,
+                            dataset_pc_path,
+                            device=device,)
+    print('metrics', metrics)
+
 
 def _add_removed_indices(sample, removed_indices, removed_values, device):
     result_tensor = torch.zeros(sample.size(0) + len(removed_indices), dtype=sample.dtype).to(device)
