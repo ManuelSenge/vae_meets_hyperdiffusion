@@ -138,9 +138,13 @@ def calc_metrics(sample_method, mlp_kwargs, cfg, orig_meshes_dir, split_type, te
     number_of_samples_to_generate = int(len(ref_pcs) * cfg.test_sample_mult)
 
     sample_x_0s = []
-    for i in range(len(dataset)):
-        sample = sample_method(dataset[i][0])
+    for i in tqdm(range(len(dataset))):
+        if i == (len(dataset) - 1):
+            sample = sample_method(dataset[i][0], final_sample=True)
+        else:
+            sample = sample_method(dataset[i][0])
         sample_x_0s.append(sample.detach())
+    torch.cuda.empty_cache()
     sample_x_0s = torch.vstack(sample_x_0s)
     torch.save(sample_x_0s, f"{orig_meshes_dir}/prev_sample_x_0s.pth")
     print(sample_x_0s.shape)
@@ -206,7 +210,9 @@ def calc_metrics(sample_method, mlp_kwargs, cfg, orig_meshes_dir, split_type, te
     print("Starting metric computation for", split_type)
     metrics = dict()
     fid = calculate_fid_3d(
-        sample_pcs.to(cfg.device), ref_pcs.to(cfg.device), None
+        sample_pcs #.to(cfg.device)
+        , ref_pcs#.to(cfg.device)
+        , None
     )
     metrics = compute_all_metrics(
         sample_pcs.to(cfg.device),

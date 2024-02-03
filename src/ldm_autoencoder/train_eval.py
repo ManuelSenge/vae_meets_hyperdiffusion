@@ -23,7 +23,7 @@ def train(model, iterator, acc_grad_batches, optimizer, loss, device, warmup, be
         loss_val_mse = loss(predictions[:, :, :-padding], weights[:, :, :-padding])
         
         loss_val_kl = posteriors.kl()
-        loss_val_kl = torch.sum(loss_val_kl) / loss_val_kl.shape[0]
+        loss_val_kl = torch.sum(loss_val_kl) / loss_val_kl.shape[0] if variational else torch.Tensor([0.])
 
         # during warmup only train mse loss
         if warmup or not variational:
@@ -63,7 +63,7 @@ def evaluate(model, iterator, loss, device, beta, variational, normalizing_const
         loss_val_mse = loss(predictions[:, :, :-padding], weights[:, :, :-padding])
         
         loss_val_kl = posteriors.kl()
-        loss_val_kl = torch.sum(loss_val_kl) / loss_val_kl.shape[0]
+        loss_val_kl = torch.sum(loss_val_kl) / loss_val_kl.shape[0] if variational else torch.Tensor([0.])
         
         if not variational:
             loss_val = loss_val_mse

@@ -273,7 +273,7 @@ def main(cfg: DictConfig):
 
         train_img_indices = [i for i in range(var_sample_count)]
 
-    def sample_from_model(original_sample, variational=False):
+    def sample_from_model(model, original_sample, variational=False, final_sample=False):
         if variational:
             sample = posterior.sample()[0]
             dec_sample = model.decode(sample.view(1, sample.shape[0], sample.shape[1]))
@@ -293,17 +293,20 @@ def main(cfg: DictConfig):
             dec_sample = dec_sample[:-padding]
             dec_sample /= 0.6930342789347619
             dec_sample = dec_sample.to(cpu_device)
-            print("MSE_Loss:", torch.nn.functional.mse_loss(original_sample, dec_sample))
+            # print("MSE_Loss:", torch.nn.functional.mse_loss(original_sample, dec_sample))
                     
         if remove_std_zero_indices:
             dec_sample = _add_removed_indices(dec_sample, removed_std_indices, removed_std_values, cpu_device)
             if not variational:
                 original_sample = _add_removed_indices(original_sample, removed_std_indices, removed_std_values, cpu_device)
+        
+        if final_sample:
+            del model
         return dec_sample
     
     
 
-    sample_from_model = partial(sample_from_model, variational=variational)
+    sample_from_model = partial(sample_from_model, model, variational=variational)
 
     print("Using validation data" if val_dt else "Using train data")
     dataset = val_dt if use_validation else train_dt
