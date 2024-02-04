@@ -286,6 +286,8 @@ def compute_all_metrics(sample_pcs, ref_pcs, batch_size, logger):
     ## CD
     res_cd = lgan_mmd_cov(M_rs_cd.t())
 
+    res_cd['chamfer'] = M_rs_cd.mean()
+
     # We use the below code to visualize some goodly&badly performing shapes
     # you can uncomment if you want to analyze that
 
