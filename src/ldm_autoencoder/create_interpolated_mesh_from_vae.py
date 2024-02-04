@@ -241,25 +241,37 @@ def main(cfg: DictConfig):
         return pred_img
    
 
-    for i in range(var_sample_count):
+    
+    idxes = [1,2,3,4]
+    posteriors = []
+    for idx in idxes:
+        sample = train_dt.__getitem__(idx)[0].view(1, -1).to(device)
+        _, posterior = model(sample)
+        posteriors.append(posterior)
 
-        sample1 = posterior.sample()[i]
-        sample2 = posterior.sample()[i+1]
-        interpolation = (sample1 + sample2)/2
+    decodes = [p.sample()[0] for p in posteriors]
+    interpolated_samples = torch.tensor([])
+    # top left, top right, bottom left, bottom right
+    interpol = [(1, 0, 0, 0), (0.5, 0.5, 0, 0), (0,1,0,0), (0.5, 0, 0.5, 0), (0.25, 0.25, 0.25, 0.25), (0, 0.5, 0, 0.5), (0,0,1,0), (0,0,0.5, 0.5), (0,0,0,1)]
+    
+    for tup in interpol:
+        if interpolated_samples.shape[0] == 0:
+            interpolated_samples = (tup[0]*decodes[0] + tup[1]*decodes[1] + tup[2]*decodes[2] + tup[3]*decodes[3]).view(1, -1)
+        else:
+            interpolated_samples = torch.cat((interpolated_samples, (tup[0]*decodes[0] + tup[1]*decodes[1] + tup[2]*decodes[2] + tup[3]*decodes[3]).view(1, -1)), dim=0)
 
+    decoded_interpoalted_samples, _ = model.decode(interpolated_samples)
 
-        pred_img_1 = _generate_image(sample1)[0]
-        pred_img_2 = _generate_image(sample2)[0]
-        pred_img_3 = _generate_image(interpolation)[0]
+    images = []
+    for sample in decoded_interpoalted_samples:
+        images.append(_generate_image(sample)[0])
 
-        images = [pred_img_1, pred_img_2, pred_img_3]
-        captions = ['pred_1', 'pred_2', 'interpolation']
-        print('pred_img')
-        if log_wandb:
-            wandb_logger.log_image(
-                    "images", images, step=count, caption=captions
-                )
-        count += 1
+    captions = [f'pred_{interpol[i]}' for i in range(len(images))]
+    print('pred_img')
+    if log_wandb:
+        wandb_logger.log_image(
+                "images", images, step=count, caption=captions
+            )
 
 def _add_removed_indices(sample, removed_indices, removed_values, device):
     result_tensor = torch.zeros(sample.size(0) + len(removed_indices), dtype=sample.dtype).to(device)
