@@ -3,6 +3,10 @@
 This repository is an extention of the official HyperDiffusion repository.
 [![arXiv](https://img.shields.io/badge/arXiv-2303.17015-b31b1b.svg)](https://arxiv.org/abs/2303.17015)
 
+The code can be found in src. Additionally to the Hyperdiffusion code the repository contains three Autoencoder (src/unet, src/vae, src/ldm_autoencoder).
+The basic pipeline remains similar:
+
+
 
 ## Dependencies
 
