@@ -11,6 +11,7 @@ The basic pipeline remains similar:
 
 ## Dependencies
 * Built using Poetry (https://python-poetry.org/)
+* Dockerizable using docker compose (=> docker compose up) - volumes can be placed into /vols/ for mlp_weights, output_data etc. => should not be too difficult to set up on remote (e. g. azure )
 * Tested on Ubuntu 20.04 / Windows / MacOS
 * Python >= 3.10 
 * PyTorch 1.13.0
