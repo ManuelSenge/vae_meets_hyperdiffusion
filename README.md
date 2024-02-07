@@ -8,8 +8,6 @@ The basic pipeline remains similar:
 
 ![image](static/autoencoder_inside_pipelinepng.png)
 
-autoencoder_inside_pipelinepng.png
-
 ## Dependencies
 
 * Tested on Ubuntu 20.04
