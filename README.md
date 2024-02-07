@@ -6,7 +6,8 @@ This repository is an extention of the official HyperDiffusion repository.
 The code can be found in src. Additionally to the Hyperdiffusion code the repository contains three Autoencoder (src/unet, src/vae, src/ldm_autoencoder).
 The basic pipeline remains similar:
 
-![image](static/autoencoder_inside_pipelinepng.png)
+![image](https://github.com/ManuelSenge/vae_meets_hyperdiffusion/assets/45656848/9ca7f261-24f7-48c3-bde0-0375f619e324)
+
 
 ## Dependencies
 
