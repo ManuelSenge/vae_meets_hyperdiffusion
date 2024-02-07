@@ -10,12 +10,21 @@ The basic pipeline remains similar:
 
 
 ## Dependencies
-
-* Tested on Ubuntu 20.04
-* Python 3.7
+* Built using Poetry (https://python-poetry.org/)
+* Tested on Ubuntu 20.04 / Windows / MacOS
+* Python >= 3.10 
 * PyTorch 1.13.0
-* CUDA 11.7
+* CUDA 11.7/11.8
 * Weights & Biases (We heavily rely on it for visualization and monitoring)
+
+## Our contribution
+- src/ldm_autoencoder for our autoencoder
+- additional scripts inside there
+- we use hyperdiffusion config for batch sitzes + dataset
+- we use autoencoder config for model architecture
+- some variables have to be set in the respective files (such as generate_every_n_epochs etc.)
+
+
 
 
 For full list please see [hyperdiffusion_env.yaml file](/hyperdiffusion_env.yaml)
