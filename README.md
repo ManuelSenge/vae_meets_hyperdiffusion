@@ -1,4 +1,6 @@
-# HyperDiffusion
+# VAE meets HyperDiffusion
+
+This repository is an extention of the official HyperDiffusion repository.
 [![arXiv](https://img.shields.io/badge/arXiv-2303.17015-b31b1b.svg)](https://arxiv.org/abs/2303.17015)
 
 Official code repository of "HyperDiffusion: Generating Implicit Neural Fields with Weight-Space Diffusion" @ ICCV 2023
