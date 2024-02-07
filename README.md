@@ -17,6 +17,7 @@ The basic pipeline remains similar:
 * PyTorch 1.13.0
 * CUDA 11.7/11.8
 * Weights & Biases (We heavily rely on it for visualization and monitoring)
+* see pyproject.toml for full dependencies - can be probably altered
 
 ## Our contribution
 - src/ldm_autoencoder for our autoencoder
