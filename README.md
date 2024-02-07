@@ -1,17 +1,12 @@
-# HyperDiffusion
+# VAE meets HyperDiffusion
+
+This repository is an extention of the official HyperDiffusion repository.
 [![arXiv](https://img.shields.io/badge/arXiv-2303.17015-b31b1b.svg)](https://arxiv.org/abs/2303.17015)
 
-Official code repository of "HyperDiffusion: Generating Implicit Neural Fields with Weight-Space Diffusion" @ ICCV 2023
+The code can be found in src. Additionally to the Hyperdiffusion code the repository contains three Autoencoder (src/unet, src/vae, src/ldm_autoencoder).
+The basic pipeline remains similar:
 
-[Paper](https://arxiv.org/abs/2303.17015) | [Project website](https://www.ziyaerkoc.com/hyperdiffusion) |  [Video](https://www.youtube.com/watch?v=wjFpsKdo-II) | [Data](https://drive.google.com/drive/folders/1CuNVa92jcKlGBiHEuCQK2-juAB6Q6QPx?usp=sharing)
-
-
-## News
-I'll release rest of the weights/checkpoints after post-refactor tests are complete. You can see here for what's uploaded.  
-- [06.09.2023] Code and airplane weights/checkpoints released
-## Method Overview
-
-![Overview image](/static/overview.svg)
+![image](static/autoencoder_inside_pipelinepng.png)
 
 ## Dependencies
 
@@ -143,26 +138,3 @@ python siren/experiment_scripts/train_sdf.py --config-name=overfit_plane
 - **transformer.py**: GPT definition from [G.pt paper](https://github.com/wpeebles/G.pt).
 - **embedder.py**: Positional encoding definition.
 - **hyperdiffusion.py**: Definition of our method, it includes training, testing and validation logics in the form of a Pytorch Lightning module.
-
-## Training Plots
-
-We share training plots for better reproducibility. Links take you to Weights & Biases reports. (_Note: Some links sometimes don't work for unknown reasons_)
-
-[Plane](https://api.wandb.ai/links/ziyaer/9korb518) | [Car](https://api.wandb.ai/links/ziyaer2/s528ygbt) | [Chair](https://api.wandb.ai/links/ziyaer2/y9pbdzwh) | [4D Animals](https://api.wandb.ai/links/ziyaer2/2xzc3fcn)
-
-## Acknowledgments
-
-We mainly used codebases of [SIREN](https://github.com/vsitzmann/siren) and [G.pt](https://github.com/wpeebles/G.pt) papers to build our repository. We also referred to [DPC](https://github.com/luost26/diffusion-point-cloud) for codes like evaluation metrics. We used [OpenAI Guided Diffusion](https://github.com/openai/guided-diffusion) as our diffusion backbone. [LDM](https://github.com/CompVis/latent-diffusion) codebase was useful for us to implement our voxel baseline.
-
-## Citation
-If you find our work useful, please cite using the following BibTex entry:
-```
-@misc{erkoç2023hyperdiffusion,
-  title={HyperDiffusion: Generating Implicit Neural Fields with Weight-Space Diffusion}, 
-  author={Ziya Erkoç and Fangchang Ma and Qi Shan and Matthias Nießner and Angela Dai},
-  year={2023},
-  eprint={2303.17015},
-  archivePrefix={arXiv},
-  primaryClass={cs.CV}
-}
-```
